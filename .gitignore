@@ -1,0 +1,26 @@
+# Quartus
+syn/**/db/
+syn/**/incremental_db/
+syn/**/output_files/
+syn/**/greybox_tmp/
+syn/**/*.qws
+syn/**/*.bak
+syn/**/*.jdi
+syn/**/*.pin
+syn/**/*.rpt
+syn/**/*.smsg
+syn/**/*.summary
+syn/**/*.done
+syn/**/build.log
+syn/**/PLLJ_PLLSPE_INFO.txt
+syn/**/c5_pin_model_dump.txt
+
+# ROM images are copyrighted: never commit them
+roms/*.rom
+roms/*.ROM
+roms/*.bin
+roms/*.BIN
+roms/boot.hex
+
+# upstream reference checkout
+upstream_ht1080z/
