@@ -59,10 +59,17 @@ entity ht1080z is
          cass_out : out std_logic_vector(1 downto 0);
 
          -- floppy controller: images are served by the IO controller
-        fdc_sd_lba : out std_logic_vector(10 downto 0);
-         fdc_sd_rd : out std_logic;
-         fdc_sd_wr : out std_logic;
-        fdc_sd_ack : in  std_logic;
+        fdc_svc_rd : out std_logic;
+        fdc_svc_wr : out std_logic;
+        fdc_svc_ra : out std_logic;
+     fdc_svc_track : out std_logic_vector(7 downto 0);
+    fdc_svc_trkreg : out std_logic_vector(7 downto 0);
+    fdc_svc_sector : out std_logic_vector(7 downto 0);
+       fdc_svc_dam : out std_logic;
+       fdc_svc_ack : in  std_logic;
+     fdc_res_found : in  std_logic;
+       fdc_res_crc : in  std_logic;
+       fdc_res_dam : in  std_logic;
      fdc_buff_addr : in  std_logic_vector(8 downto 0);
      fdc_buff_dout : in  std_logic_vector(7 downto 0);
       fdc_buff_din : out std_logic_vector(7 downto 0);
@@ -71,7 +78,6 @@ entity ht1080z is
           fdc_side : out std_logic;
          drv_ready : in  std_logic_vector(3 downto 0);
             drv_wp : in  std_logic_vector(3 downto 0);
-           drv_two : in  std_logic_vector(3 downto 0);
 
            ps2clk : in  STD_LOGIC;
            ps2dat : in  STD_LOGIC;
@@ -192,7 +198,7 @@ signal f4      : std_logic_vector(7 downto 0) := (others => '0');
 signal fdcsel, f3sel : std_logic;
 signal fdc_dout : std_logic_vector(7 downto 0);
 signal fdc_drq, fdc_busy : std_logic;
-signal fdc_rdy, fdc_wp_i, fdc_two_i : std_logic;
+signal fdc_rdy, fdc_wp_i : std_logic;
 signal fdc_drv : std_logic_vector(1 downto 0);
 signal fdc_drv_on : std_logic;
 signal fdc_reset : std_logic;
@@ -236,7 +242,6 @@ begin
   fdc_drv    <= "00" when f4(0)='1' else "01" when f4(1)='1' else "10" when f4(2)='1' else "11";
   fdc_rdy    <= fdc_drv_on and drv_ready(conv_integer(fdc_drv));
   fdc_wp_i   <= drv_wp(conv_integer(fdc_drv));
-  fdc_two_i  <= drv_two(conv_integer(fdc_drv));
   fdc_drive  <= fdc_drv;
   fdc_side   <= f4(4);
   fdc_reset  <= '1' when autores='0' or dn_go='1' else '0';
@@ -246,10 +251,13 @@ begin
       clk_sys => clk42m, ce => cpuClkEn, reset => fdc_reset,
       io_en => fdcsel, rd => not ior, wr => not iow, addr => cpua(1 downto 0),
       din => cpudo, dout => fdc_dout, drq => fdc_drq, intrq => fdc_intrq, busy => fdc_busy,
-      drive => fdc_drv, side => f4(4), ready => fdc_rdy, wp => fdc_wp_i, two_sided => fdc_two_i,
-      sd_lba => fdc_sd_lba, sd_rd => fdc_sd_rd, sd_wr => fdc_sd_wr, sd_ack => fdc_sd_ack,
-      sd_buff_addr => fdc_buff_addr, sd_buff_dout => fdc_buff_dout, sd_buff_din => fdc_buff_din,
-      sd_buff_wr => fdc_buff_wr
+      drive => fdc_drv, side => f4(4), ready => fdc_rdy, wp => fdc_wp_i,
+      svc_rd => fdc_svc_rd, svc_wr => fdc_svc_wr, svc_ra => fdc_svc_ra,
+      svc_track => fdc_svc_track, svc_trkreg => fdc_svc_trkreg, svc_sector => fdc_svc_sector,
+      svc_dam => fdc_svc_dam, svc_ack => fdc_svc_ack,
+      res_found => fdc_res_found, res_crc => fdc_res_crc, res_dam => fdc_res_dam,
+      svc_buff_addr => fdc_buff_addr, svc_buff_dout => fdc_buff_dout, svc_buff_din => fdc_buff_din,
+      svc_buff_wr => fdc_buff_wr
     );
 
   -- wait states: a data register access (F3) holds the CPU until DRQ or INTRQ when F4 bit 6 is set.

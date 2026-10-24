@@ -11,6 +11,7 @@
 #include "hw.h"
 #include "sd.h"
 #include "fat.h"
+#include "dmk.h"
 
 #define COLS 32
 #define ROWS 8
@@ -54,8 +55,8 @@ static uint8_t top;
 
 static uint8_t sector[512];
 
-/* floppy drives: the image file behind each drive */
-static file_t drive_file[NDRIVES];
+/* floppy drives: the DMK image behind each drive */
+static dmk_t drive[NDRIVES];
 static uint8_t drive_ok[NDRIVES];
 
 static const char cfg_magic[] = "C3";
@@ -243,46 +244,54 @@ static void mount_drive(uint8_t d)
 	uint8_t flags = d;
 
 	drive_ok[d] = 0;
-	if (have_dir && mount_name[d][0] != ' ' && dir_find(cp300_dir, mount_name[d], &e)) {
-		file_open(&drive_file[d], &e);
+	dmk_forget(&drive[d]);
+	if (have_dir && mount_name[d][0] != ' ' && dir_find(cp300_dir, mount_name[d], &e) &&
+	    dmk_open(&drive[d], &e)) {
 		drive_ok[d] = 1;
 		flags |= 0x04;
-		if (e.attr & 0x01)
+		if ((e.attr & 0x01) || drive[d].readonly)
 			flags |= 0x08;
-		if (e.size > 368640UL)          /* more than 80 x 18 x 256: two sided */
-			flags |= 0x10;
 	}
 	DRV_FLAGS = flags;
 }
 
-/* answer a block request of the floppy controller */
+/* answer a request of the floppy controller: read or write a sector, or the next ID field */
 static void fdc_service(void)
 {
 	uint8_t req = FDC_REQ;
-	uint8_t d;
+	uint8_t d, side, trk, reg, sec, res;
 	uint16_t n;
-	uint32_t blk;
 
-	if (!(req & 3))
+	if (!(req & 7))
 		return;
-	d = (req >> 3) & 3;
-	blk = FDC_LBA_HI;
-	blk = (blk << 8) | FDC_LBA_LO;
+	d = (req >> 4) & 3;
+	side = (req >> 3) & 1;
+	trk = FDC_TRK;
+	reg = FDC_TRKREG;
+	sec = FDC_SEC;
 	if (req & 1) {
-		if (!drive_ok[d] || file_read(&drive_file[d], blk, sector))
-			for (n = 0; n < 512; n++)
-				sector[n] = 0;
+		res = drive_ok[d] ? dmk_read_sector(&drive[d], trk, side, reg, sec, sector) : 0;
+		FDC_RES = res;
 		FDC_ACK = 1;
-		for (n = 0; n < 512; n++)
-			FDC_BUF = sector[n];
+		if (res & DMK_FOUND)
+			for (n = 0; n < 256; n++)
+				FDC_BUF = sector[n];
+		FDC_ACK = 0;
+	} else if (req & 2) {
+		FDC_ACK = 1;                    /* the controller holds the data; the write is done under ACK */
+		for (n = 0; n < 256; n++)
+			sector[n] = FDC_BUF;
+		res = drive_ok[d] ? dmk_write_sector(&drive[d], trk, side, reg, sec, sector, (req >> 6) & 1) : 0;
+		FDC_RES = res ? DMK_FOUND : 0;
 		FDC_ACK = 0;
 	} else {
+		res = drive_ok[d] ? dmk_read_address(&drive[d], trk, side, sector) : 0;
+		FDC_RES = res;
 		FDC_ACK = 1;
-		for (n = 0; n < 512; n++)
-			sector[n] = FDC_BUF;
+		if (res & DMK_FOUND)
+			for (n = 0; n < 6; n++)
+				FDC_BUF = sector[n];
 		FDC_ACK = 0;
-		if (drive_ok[d] && !(drive_file[d].size == 0))
-			file_write(&drive_file[d], blk, sector);
 	}
 }
 
@@ -507,6 +516,7 @@ void main(void)
 	uint8_t k;
 
 	DBG = 0x01;
+	dmk_init();
 	card_start();
 	/* LEDs: b0 card ok, b1 /CP300 found, b2 CP300.CFG found, b7:3 error code */
 	DBG = sd_ok | (have_dir << 1) | (cfg_ok << 2) | (sd_err << 3);

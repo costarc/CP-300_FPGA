@@ -19,13 +19,15 @@
 --   06  w: select a character generator glyph (code); column counter back to 0
 --   07  r: A5 (identification)
 --   08  w: debug byte (reported in simulation)
---   10  r: floppy controller request: b0 read, b1 write, b2 side, b4:3 drive
---   11  r: block number (512-byte block inside the disk image), low 8 bits
---   12  r: block number, high 3 bits
+--   10  r: floppy controller request: b0 read sector, b1 write sector, b2 read address, b3 side,
+--       b5:4 drive, b6 write a deleted data mark
+--   11  r: head position (track) of the drive    12  r: track register    17  r: sector number
 --   13  w: b0 = acknowledge: the buffer pointer goes to 0 and the buffer port is live while set
---   14  rw: sector buffer data port, 512 bytes, auto-increment (write fills it for a read request,
---       read empties it for a write request)
---   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected, b4 two sided
+--   14  rw: sector buffer data port, auto-increment (write fills it for a read request, read
+--       empties it for a write request)
+--   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected
+--   16  w: result of the request, read by the controller when the acknowledge drops:
+--       b0 sector found, b1 CRC error, b2 deleted data mark
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -55,7 +57,14 @@ entity io_ctrl is
     -- floppy controller sector service
     fdc_rd      : in  std_logic;
     fdc_wr      : in  std_logic;
-    fdc_lba     : in  std_logic_vector(10 downto 0);
+    fdc_ra      : in  std_logic;
+    fdc_track   : in  std_logic_vector(7 downto 0);
+    fdc_trkreg  : in  std_logic_vector(7 downto 0);
+    fdc_sector  : in  std_logic_vector(7 downto 0);
+    fdc_dam     : in  std_logic;
+    fdc_res_found : out std_logic;
+    fdc_res_crc   : out std_logic;
+    fdc_res_dam   : out std_logic;
     fdc_drive   : in  std_logic_vector(1 downto 0);
     fdc_side    : in  std_logic;
     fdc_ack     : out std_logic;
@@ -64,8 +73,7 @@ entity io_ctrl is
     fdc_buff_wr   : out std_logic;
     fdc_buff_din  : in  std_logic_vector(7 downto 0);
     drv_ready   : out std_logic_vector(3 downto 0);
-    drv_wp      : out std_logic_vector(3 downto 0);
-    drv_two     : out std_logic_vector(3 downto 0)
+    drv_wp      : out std_logic_vector(3 downto 0)
   );
 end io_ctrl;
 
@@ -74,8 +82,7 @@ architecture rtl of io_ctrl is
   type ram_t is array (0 to 8191) of std_logic_vector(7 downto 0);
   type fifo_t is array (0 to 15) of std_logic_vector(7 downto 0);
 
-  signal cen    : std_logic := '0';
-  signal cdiv   : unsigned(1 downto 0) := (others => '0');
+  signal cen    : std_logic;
 
   signal a      : std_logic_vector(15 downto 0);
   signal di, cpu_do: std_logic_vector(7 downto 0);
@@ -89,7 +96,8 @@ architecture rtl of io_ctrl is
   signal ack_r, bw_r : std_logic := '0';
   signal baddr : unsigned(8 downto 0) := (others => '0');
   signal bdout : std_logic_vector(7 downto 0) := (others => '0');
-  signal dr_ready, dr_wp, dr_two : std_logic_vector(3 downto 0) := (others => '0');
+  signal dr_ready, dr_wp : std_logic_vector(3 downto 0) := (others => '0');
+  signal res_r : std_logic_vector(2 downto 0) := (others => '0');
   signal rd_port : std_logic_vector(7 downto 0) := (others => '0');
   signal port_a  : std_logic_vector(7 downto 0);
 
@@ -134,14 +142,9 @@ begin
     end if;
   end process;
 
-  -- 14 MHz CPU clock enable
-  process(clk)
-  begin
-    if rising_edge(clk) then
-      if cdiv = 2 then cdiv <= (others => '0'); cen <= '1';
-      else cdiv <= cdiv + 1; cen <= '0'; end if;
-    end if;
-  end process;
+  -- The CPU runs at the full 42 MHz: the design meets timing at that clock anyway (the enable only
+  -- gates registers, it adds no slower paths). Memory is synchronous, one clock of latency.
+  cen <= '1';
 
   cpu : entity work.T80s
     port map (
@@ -300,7 +303,7 @@ begin
       bw_r <= '0';
       if reset = '1' then
         ack_r <= '0'; baddr <= (others => '0');
-        dr_ready <= (others => '0'); dr_wp <= (others => '0'); dr_two <= (others => '0');
+        dr_ready <= (others => '0'); dr_wp <= (others => '0'); res_r <= (others => '0');
       else
         if bw_r = '1' then baddr <= baddr + 1; end if;
         if cen = '1' and rdp = '1' and rd_port = x"14" then baddr <= baddr + 1; end if;
@@ -313,7 +316,9 @@ begin
               bdout <= cpu_do; bw_r <= '1';
             when x"15" =>
               d := to_integer(unsigned(cpu_do(1 downto 0)));
-              dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3); dr_two(d) <= cpu_do(4);
+              dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3);
+            when x"16" =>
+              res_r <= cpu_do(2 downto 0);
             when others => null;
           end case;
         end if;
@@ -324,7 +329,8 @@ begin
   fdc_buff_addr <= std_logic_vector(baddr);
   fdc_buff_dout <= bdout;
   fdc_buff_wr <= bw_r;
-  drv_ready <= dr_ready; drv_wp <= dr_wp; drv_two <= dr_two;
+  drv_ready <= dr_ready; drv_wp <= dr_wp;
+  fdc_res_found <= res_r(0); fdc_res_crc <= res_r(1); fdc_res_dam <= res_r(2);
 
   -- control register and glyph select
   process(clk)
@@ -357,9 +363,10 @@ begin
         "0000000" & kbd_avail when port_a = x"02" else
         fifo_do when port_a = x"03" else
         gcolbyte when port_a = x"05" else
-        "000" & fdc_drive & fdc_side & fdc_wr & fdc_rd when port_a = x"10" else
-        fdc_lba(7 downto 0) when port_a = x"11" else
-        "00000" & fdc_lba(10 downto 8) when port_a = x"12" else
+        '0' & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
+        fdc_track when port_a = x"11" else
+        fdc_trkreg when port_a = x"12" else
+        fdc_sector when port_a = x"17" else
         fdc_buff_din when port_a = x"14" else
         x"A5"   when port_a = x"07" else
         x"00";

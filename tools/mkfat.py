@@ -45,10 +45,11 @@ def z80_asm(items, org):
 
 
 def boot_disk():
-    """Raw 40 track x 18 x 256 disk. The boot sector prints "BOOT OK" on the first screen line,
-    then tests the controller: SEEK track 5, READ sector 3 (checks the data), WRITE it back
-    changed, READ again and compare. It prints "FDC OK " or "FDC BAD" on the second line.
-    Track 5 sector 3 holds byte i = i ^ 5A."""
+    """DMK disk, 40 tracks, one side: track 0 single density (FM, 10 sectors numbered from 0), the
+    rest double density (18 sectors numbered from 0). The boot sector (ID 1, what the ROM reads)
+    prints "BOOT OK" on the first screen line, then tests the controller: SEEK track 5, READ sector 3
+    (checks the data), WRITE it back changed, READ again and compare, READ sector 0. It prints
+    "FDC OK " or "FDC BAD" on the second line. Track 5 sector 3 holds byte i = i ^ 5A, sector 0 i ^ A7."""
     I = lambda *b: bytes(b)
     prog = [
         (I(0x21), "abs", "msg_boot"), I(0x11, 0x00, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
@@ -66,6 +67,9 @@ def boot_disk():
         I(0x21, 0x00, 0x45), (I(0xCD), "abs", "rdsec"),
         I(0x3A, 0x00, 0x45, 0xFE, 0x77), (I(0x20), "rel", "bad"),
         I(0x3A, 0x01, 0x45, 0xFE, 0x5B), (I(0x20), "rel", "bad"),
+        I(0x3E, 0x00, 0xD3, 0xF2, 0x3E, 0x80, 0xD3, 0xF0),   # READ sector 0
+        I(0x21, 0x00, 0x46), (I(0xCD), "abs", "rdsec"),
+        I(0x3A, 0x00, 0x46, 0xFE, 0xA7), (I(0x20), "rel", "bad"),
         (I(0x21), "abs", "msg_ok"), (I(0x18), "rel", "print"),
         ("label", "bad"), (I(0x21), "abs", "msg_bad"),
         ("label", "print"), I(0x11, 0x40, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
@@ -83,12 +87,20 @@ def boot_disk():
     ]
     code, _ = z80_asm(prog, 0x4300)
     assert len(code) <= 256
-    disk = bytearray(40 * 18 * 256)
-    disk[0:len(code)] = code
-    o = (5 * 18 + 2) * 256
-    for i in range(256):
-        disk[o + i] = i ^ 0x5A
-    return bytes(disk)
+    import dsk2dmk
+    disk = dsk2dmk.Disk()
+    for t in range(40):
+        ids = range(10) if t == 0 else range(18)
+        for sid in ids:
+            data = bytes(256)
+            if t == 0 and sid == 1:
+                data = code.ljust(256, bytes([0]))
+            if t == 5 and sid == 3:
+                data = bytes(i ^ 0x5A for i in range(256))
+            if t == 5 and sid == 0:
+                data = bytes(i ^ 0xA7 for i in range(256))
+            disk.add(t, 0, sid, data, dd=(t != 0))
+    return dsk2dmk.write_dmk(disk)
 
 
 def test_files():

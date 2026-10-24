@@ -33,9 +33,11 @@ begin
               sd_miso => sd_miso, sd_wp_n => '1', osd_ss3 => osd_ss3,
               ps2clk => ps2clk, ps2dat => ps2dat,
               menu_open => menu_open, core_rst => core_rst,
-              fdc_rd => '0', fdc_wr => '0', fdc_lba => (others => '0'), fdc_drive => "00", fdc_side => '0',
+              fdc_rd => '0', fdc_wr => '0', fdc_ra => '0', fdc_track => x"00", fdc_trkreg => x"00",
+              fdc_sector => x"00", fdc_dam => '0', fdc_res_found => open, fdc_res_crc => open,
+              fdc_res_dam => open, fdc_drive => "00", fdc_side => '0',
               fdc_ack => open, fdc_buff_addr => open, fdc_buff_dout => open, fdc_buff_wr => open,
-              fdc_buff_din => x"00", drv_ready => open, drv_wp => open, drv_two => open);
+              fdc_buff_din => x"00", drv_ready => open, drv_wp => open);
 
   ----------------------------------------------------------------------
   -- SD card (SPI mode 0, SDHC)

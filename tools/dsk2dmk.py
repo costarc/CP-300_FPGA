@@ -1,27 +1,22 @@
 #!/usr/bin/env python3
-"""Convert TRS-80 disk images (JV1, JV3, DMK) to the raw layout the CP-300 FPGA reads.
+"""Convert TRS-80 disk images (JV1, JV3, HFE) to DMK, the format the CP-300 FPGA reads.
 
-    python tools/dsk2raw.py in.dsk out.dsk [--format auto|jv1|jv3|dmk|hfe] [--first N]
-                            [--tracks N] [--sides N]
-    python tools/dsk2raw.py indir outdir          convert every image in a folder (8.3 names + INDEX.TXT)
+    python tools/dsk2dmk.py in.img out.dsk [--format auto|jv1|jv3|dmk|hfe]
+    python tools/dsk2dmk.py indir outdir [--force]     convert a whole folder (8.3 names + INDEX.TXT)
 
-Raw layout (see rtl/fdc/wd1793.vhd): 18 sectors of 256 bytes per track, tracks in order;
-a double sided disk interleaves the sides (track 0 side 0, track 0 side 1, track 1 ...).
-The sector ID decides the slot: slot = ID - first, where `first` is the lowest 256-byte sector
-ID on the disk (0 or 1, or --first). The controller accepts sector IDs 1..18, so disks that
-number their sectors from 0 convert, but the DOS on them will ask for sector 0, which the
-controller refuses; a warning says so. Density is not kept: a single density track (10 sectors)
-just fills the first slots of its track.
+The FPGA's IO controller uses DMK images directly (David Keil's format, as xtrs, TRS80GP, HxC and
+FreHD use it), with real sector IDs, FM/MFM tracks, deleted data marks and CRC errors. A DMK input is
+copied unchanged. JV1 and JV3 disks, and HFE bit-stream dumps (decoded here, FM and MFM), are
+rebuilt as DMK tracks: ID fields, data fields and CRCs as the controller would have written them.
 
-Only 256-byte sectors are converted. Sectors with other sizes or with IDs outside the 18 slots
-are skipped and counted. The firmware treats a file larger than 80 x 18 x 256 bytes as double
-sided, so a double sided result that would be smaller than that is padded by one track pair.
+Limits: sectors of any size are kept, but the controller only reads 256-byte sectors; one track
+holds up to 64 sectors and 6400 bytes (0x1900, the usual 5.25" DMK track length).
 
-Formats:
+Formats read:
   JV1  no header, 256-byte sectors, 10 per track, single sided, single density
   JV3  Jeff Vavasour's, https://www.tim-mann.org/trs80/dskspec.html
   DMK  David Keil's, header 16 bytes + per track a 128-byte IDAM table (offsets with bit 15 = DD)
-  HFE  HxC Floppy Emulator v1 ("HXCPICFE"): the bit cells of every track, decoded here (FM and MFM)
+  HFE  HxC Floppy Emulator v1 ("HXCPICFE"): the bit cells of every track
 """
 import argparse
 import os
@@ -29,40 +24,52 @@ import re
 import struct
 import sys
 
-SECTORS = 18
-SECSIZE = 256
-TRACK_BYTES = SECTORS * SECSIZE
-SINGLE_SIDED_MAX = 80 * TRACK_BYTES      # the firmware: larger files are two sided
+NL = chr(10)
+TLEN = 0x1900          # bytes per track in the DMK files written here
+
+
+class Sector:
+    def __init__(self, data, dd=True, dam=0xFB, bad_crc=False, c=None, h=None):
+        self.c, self.h = c, h        # cylinder and head numbers in the ID field (None: as the position)
+        self.data = bytes(data)
+        self.dd = dd                 # double density (MFM); False = single density (FM)
+        self.dam = dam               # data address mark: FB normal, F8 deleted, FA/F9 user
+        self.bad_crc = bad_crc
 
 
 class Disk:
-    """What the readers collect: sectors[(track, side, id)] = 256 bytes."""
+    """What the readers collect: sectors[(track, side, id)] = Sector, in the order found."""
 
     def __init__(self):
         self.sectors = {}
         self.sides = 1
         self.tracks = 0
-        self.skipped_size = 0
-        self.crc_errors = 0
         self.warnings = []
+        self.dups = set()            # (track, side, id) found more than once (copy protection)
 
-    def add(self, track, side, sid, data, crc_error=False):
-        if len(data) != SECSIZE:
-            self.skipped_size += 1
-            return
-        if crc_error:
-            self.crc_errors += 1
-        self.sectors[(track, side, sid)] = data
+    def add(self, track, side, sid, data, dd=True, dam=0xFB, bad_crc=False, c=None, h=None):
+        if (track, side, sid) in self.sectors:
+            self.dups.add((track, side, sid))
+        self.sectors[(track, side, sid)] = Sector(data, dd, dam, bad_crc, c, h)
         self.sides = max(self.sides, side + 1)
         self.tracks = max(self.tracks, track + 1)
+
+
+def crc16(data, crc=0xFFFF):
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
 
 
 # ---- JV1 ----------------------------------------------------------------
 
 def read_jv1(blob):
     d = Disk()
-    for n in range(len(blob) // SECSIZE):
-        d.add(n // 10, 0, n % 10, blob[n * SECSIZE:(n + 1) * SECSIZE])
+    for n in range(len(blob) // 256):
+        t = n // 10
+        d.add(t, 0, n % 10, blob[n * 256:(n + 1) * 256], dd=False, dam=0xFA if t == 17 else 0xFB)
     return d
 
 
@@ -70,6 +77,8 @@ def read_jv1(blob):
 
 JV3_ENTRIES = 2901
 JV3_HEADER = JV3_ENTRIES * 3 + 1
+JV3_DAM_SD = {0x00: 0xFB, 0x20: 0xFA, 0x40: 0xF9, 0x60: 0xF8}
+JV3_DAM_DD = {0x00: 0xFB, 0x20: 0xF8, 0x40: 0xFB, 0x60: 0xFB}
 
 
 def jv3_size(flags, free):
@@ -84,8 +93,7 @@ def jv3_looks_valid(blob):
     used = 0
     for i in range(JV3_ENTRIES):
         t, s, f = blob[i * 3:i * 3 + 3]
-        free = (t == 0xFF and s == 0xFF)
-        if free:
+        if t == 0xFF and s == 0xFF:
             break
         pos += jv3_size(f, False)
         used += 1
@@ -109,7 +117,9 @@ def read_jv3(blob):
                 break
             if not free:
                 used += 1
-                d.add(t, (f >> 4) & 1, s, blob[pos:pos + size], bool(f & 0x08))
+                dd = bool(f & 0x80)
+                dam = (JV3_DAM_DD if dd else JV3_DAM_SD)[f & 0x60]
+                d.add(t, (f >> 4) & 1, s, blob[pos:pos + size], dd, dam, bool(f & 0x08))
             pos += size
         base = pos            # a second header block follows the data of the first one
         if used == 0:
@@ -126,9 +136,8 @@ def dmk_looks_valid(blob):
     tlen = blob[2] | (blob[3] << 8)
     if blob[0] not in (0x00, 0xFF) or not 1 <= ntracks <= 100 or tlen < 128 + 16 or tlen > 0x2940:
         return False
-    if blob[12:16] != b"\0\0\0\0":
+    if blob[12:16] != bytes(4):
         return False
-    # the first track must start with a plausible IDAM table
     first = struct.unpack_from("<H", blob, 16)[0] & 0x3FFF
     return 128 <= first < tlen
 
@@ -177,9 +186,8 @@ def read_dmk(blob):
                     d.warnings.append(f"track {t} side {s}: bad ID field {i}")
                     continue
                 size = 128 << n
-                # the data mark follows the ID field after a gap (within 64 bytes)
                 dam = None
-                for k in range(7, 70):
+                for k in range(7, 90):
                     if pos + k * step >= limit:
                         break
                     if at(k) in (0xF8, 0xF9, 0xFA, 0xFB):
@@ -188,22 +196,17 @@ def read_dmk(blob):
                 if dam is None:
                     d.warnings.append(f"track {t} side {s} sector {r}: no data mark")
                     continue
-                data = bytes(at(dam + 1 + j) if at(dam + 1 + j) is not None else 0 for j in range(size))
+                vals = [at(dam + 1 + j) for j in range(size + 2)]
+                data = bytes(0 if v is None else v for v in vals[:size])
+                pre = bytes([0xA1] * 3) if dd else b""
+                bad = crc16(pre + bytes([at(dam)]) + data) != ((vals[size] or 0) << 8 | (vals[size + 1] or 0))
                 if c != t:
                     d.warnings.append(f"track {t} side {s}: sector ID says track {c}")
-                d.add(t, s, r, data)
+                d.add(t, s, r, data, dd, at(dam), bad, c, h)
     return d
 
 
 # ---- HFE (HxC Floppy Emulator, v1) ----------------------------------------
-
-def crc16(data, crc=0xFFFF):
-    for b in data:
-        crc ^= b << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
-    return crc
-
 
 _BITS = [format(b, "08b")[::-1] for b in range(256)]       # HFE stores the first cell in bit 0
 
@@ -217,12 +220,11 @@ _FM_DAM = {m: fm_word(m) for m in (0xF8, 0xF9, 0xFA, 0xFB)}
 _MFM_SYNC = "0100010010001001" * 3                         # A1 A1 A1 with the missing clock
 
 
-def decode_cells(cells, start, count, fm):
-    """Decode `count` data bytes starting at cell index `start`."""
+def decode_cells(cells, start, count):
+    """Decode `count` data bytes starting at cell index `start` (data bits are every second cell)."""
     out = bytearray()
     for k in range(count):
-        o = start + 16 * k
-        w = cells[o + 1:o + 16:2]
+        w = cells[start + 16 * k + 1:start + 16 * k + 16:2]
         if len(w) < 8:
             return None
         out.append(int(w, 2))
@@ -239,7 +241,7 @@ def hfe_track_events(cells):
             ev.append((m.start(), "dam", True, mark, m.start() + 16))
     for m in re.finditer("(?=" + _MFM_SYNC + ")", cells):
         e = m.start() + 48
-        mk = decode_cells(cells, e, 1, False)
+        mk = decode_cells(cells, e, 1)
         if mk and mk[0] == 0xFE:
             ev.append((m.start(), "id", False, 0xFE, e + 16))
         elif mk and mk[0] in (0xF8, 0xF9, 0xFA, 0xFB):
@@ -265,7 +267,7 @@ def read_hfe(blob):
             for i, (pos, kind, fm, mark, data0) in enumerate(ev):
                 if kind != "id":
                     continue
-                idf = decode_cells(cells, data0, 6, fm)
+                idf = decode_cells(cells, data0, 6)
                 if idf is None:
                     continue
                 c, h, r, n = idf[:4]
@@ -279,7 +281,7 @@ def read_hfe(blob):
                 if dam is None:
                     d.warnings.append(f"track {t} side {s} sector {r}: no data mark")
                     continue
-                data = decode_cells(cells, dam[4], size + 2, fm)
+                data = decode_cells(cells, dam[4], size + 2)
                 if data is None:
                     d.warnings.append(f"track {t} side {s} sector {r}: data field cut short")
                     continue
@@ -287,8 +289,77 @@ def read_hfe(blob):
                 bad = crc16(pre + bytes([dam[3]]) + data[:size]) != (data[size] << 8 | data[size + 1])
                 if c != t:
                     d.warnings.append(f"track {t} side {s}: sector ID says track {c}")
-                d.add(t, s, r, data[:size], bad)
+                d.add(t, s, r, data[:size], not fm, dam[3], bad, c, h)
     return d
+
+
+# ---- DMK writer -----------------------------------------------------------
+
+def build_track(sectors, t, s):
+    """One DMK track (TLEN bytes) from [(id, Sector)] in disk order; single density sectors are
+    written with every byte twice, as the DMK header (flags 0) says."""
+    trk = bytearray(b"\x4E" * TLEN)
+    trk[0:128] = bytes(128)
+    pos = 128
+    ptrs = []
+
+    def put(bs, dd):
+        nonlocal pos
+        for b in bs:
+            for _ in range(1 if dd else 2):
+                if pos >= TLEN:
+                    sys.exit(f"error: track {t} side {s} does not fit in {TLEN} bytes")
+                trk[pos] = b
+                pos += 1
+
+    if sectors:
+        first_dd = sectors[0][1].dd
+        put(b"\x4E" * 40 if first_dd else b"\xFF" * 16, first_dd)
+    for sid, sec in sectors:
+        dd = sec.dd
+        gap = b"\x4E" if dd else b"\xFF"
+        size = len(sec.data)
+        if size not in (128, 256, 512, 1024):
+            continue
+        n = {128: 0, 256: 1, 512: 2, 1024: 3}[size]
+        put(bytes(12 if dd else 6), dd)
+        if dd:
+            put(b"\xA1\xA1\xA1", dd)
+        if len(ptrs) >= 64:
+            sys.exit(f"error: more than 64 sectors on track {t} side {s}")
+        ptrs.append(pos | (0x8000 if dd else 0))
+        idf = bytes([0xFE, t if sec.c is None else sec.c, s if sec.h is None else sec.h, sid, n])
+        crc = crc16((b"\xA1\xA1\xA1" if dd else b"") + idf)
+        put(idf + struct.pack(">H", crc), dd)
+        put(gap * (22 if dd else 11), dd)
+        put(bytes(12 if dd else 6), dd)
+        if dd:
+            put(b"\xA1\xA1\xA1", dd)
+        crc = crc16((b"\xA1\xA1\xA1" if dd else b"") + bytes([sec.dam]) + sec.data)
+        if sec.bad_crc:
+            crc ^= 0xFFFF
+        put(bytes([sec.dam]) + sec.data + struct.pack(">H", crc), dd)
+        put(gap * (24 if dd else 16), dd)
+    for i, p in enumerate(ptrs):
+        struct.pack_into("<H", trk, 2 * i, p)
+    return bytes(trk)
+
+
+def write_dmk(disk):
+    sides = disk.sides
+    out = bytearray(16)
+    out[1] = disk.tracks
+    out[2], out[3] = TLEN & 255, TLEN >> 8
+    if sides == 1:
+        out[4] = 0x10
+    for t in range(disk.tracks):
+        for s in range(sides):
+            secs = []
+            for (tt, ss, sid), sec in disk.sectors.items():
+                if (tt, ss) == (t, s):
+                    secs.append((sid, sec))
+            out += build_track(secs, t, s)
+    return bytes(out)
 
 
 # ---- conversion ---------------------------------------------------------
@@ -300,48 +371,25 @@ def detect(blob):
         return "dmk"
     if jv3_looks_valid(blob):
         return "jv3"
-    if len(blob) % (10 * SECSIZE) == 0 and len(blob) > 0:
+    if len(blob) % 2560 == 0 and len(blob) > 0:
         return "jv1"
     sys.exit("error: cannot tell the format (use --format)")
 
 
-def convert(blob, fmt="auto", first=None, tracks=None, sides=None):
+def convert(blob, fmt="auto"):
     if fmt == "auto":
         fmt = detect(blob)
     disk = {"jv1": read_jv1, "jv3": read_jv3, "dmk": read_dmk, "hfe": read_hfe}[fmt](blob)
     if not disk.sectors:
-        sys.exit("error: no 256-byte sectors found")
-    ids = [k[2] for k in disk.sectors]
-    if first is None:
-        first = min(ids)
-        if first > 1:
-            first = 1
-    notes = []
-    if first == 0:
-        notes.append("sector IDs start at 0; the controller only accepts 1..18, so a DOS that asks "
-                     "for sector 0 will get an error")
-    nsides = sides or disk.sides
-    ntracks = tracks or disk.tracks
-    out = bytearray(ntracks * nsides * TRACK_BYTES)
-    placed = skipped = 0
-    for (t, s, sid), data in disk.sectors.items():
-        slot = sid - first
-        if not (0 <= slot < SECTORS) or t >= ntracks or s >= nsides:
-            skipped += 1
-            continue
-        o = ((t * nsides + s) * SECTORS + slot) * SECSIZE
-        out[o:o + SECSIZE] = data
-        placed += 1
-    if nsides == 2 and len(out) <= SINGLE_SIDED_MAX:
-        out += bytes(SINGLE_SIDED_MAX + TRACK_BYTES * 2 - len(out))
-        notes.append("padded so the firmware sees a double sided disk")
-    info = {"format": fmt, "tracks": ntracks, "sides": nsides, "first": first, "placed": placed,
-            "skipped": skipped + disk.skipped_size, "crc_errors": disk.crc_errors,
-            "warnings": disk.warnings, "notes": notes}
-    return bytes(out), info
+        sys.exit("error: no sectors found")
+    n256 = sum(1 for s in disk.sectors.values() if len(s.data) == 256)
+    info = {"format": fmt, "tracks": disk.tracks, "sides": disk.sides, "sectors": len(disk.sectors),
+            "other_size": len(disk.sectors) - n256, "crc_errors": sum(s.bad_crc for s in disk.sectors.values()),
+            "warnings": disk.warnings,
+            "first_id": min(k[2] for k in disk.sectors)}
+    return (blob if fmt == "dmk" else write_dmk(disk)), info
 
 
-NL = chr(10)
 EXTS = (".dsk", ".dmk", ".hfe", ".jv1", ".jv3")
 
 
@@ -361,6 +409,7 @@ def short_name(stem, taken):
 
 
 def batch(indir, outdir, force=False):
+    """force: reuse the names of files already in outdir (a re-run of the same conversion)."""
     os.makedirs(outdir, exist_ok=True)
     files = sorted(f for f in os.listdir(indir) if f.lower().endswith(EXTS))
     # the same disk as DMK/DSK and as HFE: use the DMK
@@ -371,7 +420,7 @@ def batch(indir, outdir, force=False):
         k = stem.upper()
         if k not in best or rank[ext.lower()] < rank[os.path.splitext(best[k])[1].lower()]:
             best[k] = f
-    taken = {n.upper() for n in os.listdir(outdir)}
+    taken = set() if force else {n.upper() for n in os.listdir(outdir)}
     lines, seen, ok = [], {}, 0
     for f in files:
         stem = os.path.splitext(f)[0]
@@ -379,34 +428,32 @@ def batch(indir, outdir, force=False):
             lines.append(f"{f:40s} skipped: the same disk is converted from {best[stem.upper()]}")
             continue
         try:
-            raw, info = convert(open(os.path.join(indir, f), "rb").read())
+            dmk, info = convert(open(os.path.join(indir, f), "rb").read())
         except SystemExit as e:
             lines.append(f"{f:40s} FAILED: {e}")
             print(f"{f}: FAILED: {e}")
             continue
         out = short_name(stem, taken)
         taken.add(out)
-        open(os.path.join(outdir, out), "wb").write(raw)
+        open(os.path.join(outdir, out), "wb").write(dmk)
         ok += 1
-        same = seen.setdefault(hash(raw), out)
+        same = seen.setdefault(hash(dmk), out)
         extra = []
         if same != out:
             extra.append(f"identical to {same}")
-        if info["first"] == 0:
-            extra.append("sector IDs start at 0")
-        if info["skipped"]:
-            extra.append(f"{info['skipped']} sectors skipped")
+        if info["other_size"]:
+            extra.append(f"{info['other_size']} sectors not 256 bytes")
         if info["crc_errors"]:
             extra.append(f"{info['crc_errors']} CRC errors")
         if info["warnings"]:
             extra.append(f"{len(info['warnings'])} warnings, first: {info['warnings'][0]}")
         line = (f"{out:13s} <- {f:36s} {info['format'].upper()} {info['tracks']:2d} tracks "
-                f"{info['sides']} side(s) {info['placed']:4d} sectors  " + "; ".join(extra))
+                f"{info['sides']} side(s) {info['sectors']:4d} sectors  " + "; ".join(extra))
         lines.append(line.rstrip())
         print(line.rstrip())
     with open(os.path.join(outdir, "INDEX.TXT"), "w") as fh:
-        fh.write("Converted by tools/dsk2raw.py: 18 x 256 raw images for the CP-300 FPGA."+NL)
-        fh.write("Copy the *.DSK files to /CP300 on the SD card."+NL+NL)
+        fh.write("Converted by tools/dsk2dmk.py: DMK images for the CP-300 FPGA." + NL)
+        fh.write("Copy the *.DSK files to /CP300 on the SD card." + NL + NL)
         fh.write(NL.join(lines) + NL)
     print(f"{ok} images written to {outdir}")
 
@@ -416,21 +463,15 @@ def main():
     ap.add_argument("input")
     ap.add_argument("output")
     ap.add_argument("--format", choices=["auto", "jv1", "jv3", "dmk", "hfe"], default="auto")
-    ap.add_argument("--first", type=int, help="ID of the first sector (default: the lowest 256-byte ID, at most 1)")
-    ap.add_argument("--tracks", type=int, help="number of tracks in the output (default: highest track + 1)")
-    ap.add_argument("--sides", type=int, choices=[1, 2], help="force the number of sides")
+    ap.add_argument("--force", action="store_true", help="folder mode: overwrite files of the same name in the output folder")
     a = ap.parse_args()
     if os.path.isdir(a.input):
-        batch(a.input, a.output)
+        batch(a.input, a.output, a.force)
         return
-    blob = open(a.input, "rb").read()
-    out, info = convert(blob, a.format, a.first, a.tracks, a.sides)
-    open(a.output, "wb").write(out)
-    print(f"{info['format'].upper()}: {info['tracks']} tracks, {info['sides']} side(s), first sector ID {info['first']}: "
-          f"{info['placed']} sectors written, {info['skipped']} skipped, {info['crc_errors']} with CRC errors; "
-          f"{len(out)} bytes -> {a.output}")
-    for n in info["notes"]:
-        print("note:", n)
+    dmk, info = convert(open(a.input, "rb").read(), a.format)
+    open(a.output, "wb").write(dmk)
+    print(f"{info['format'].upper()}: {info['tracks']} tracks, {info['sides']} side(s), {info['sectors']} sectors "
+          f"({info['other_size']} not 256 bytes, {info['crc_errors']} with CRC errors); {len(dmk)} bytes -> {a.output}")
     for w in info["warnings"][:20]:
         print("warning:", w)
     if len(info["warnings"]) > 20:

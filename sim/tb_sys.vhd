@@ -19,12 +19,13 @@ architecture sim of tb_sys is
 
   signal sd_cs_n, spi_sck, spi_mosi, sd_miso, osd_ss3 : std_logic;
 
-  signal fdc_lba : std_logic_vector(10 downto 0);
-  signal fdc_rd, fdc_wr, fdc_ack, fdc_buff_wr, fdc_side : std_logic;
+  signal fdc_track, fdc_trkreg, fdc_sector : std_logic_vector(7 downto 0);
+  signal fdc_rd, fdc_wr, fdc_ra, fdc_dam, fdc_ack, fdc_buff_wr, fdc_side : std_logic;
+  signal fdc_res_found, fdc_res_crc, fdc_res_dam : std_logic;
   signal fdc_buff_addr : std_logic_vector(8 downto 0);
   signal fdc_buff_dout, fdc_buff_din : std_logic_vector(7 downto 0);
   signal fdc_drive : std_logic_vector(1 downto 0);
-  signal drv_ready, drv_wp, drv_two : std_logic_vector(3 downto 0);
+  signal drv_ready, drv_wp : std_logic_vector(3 downto 0);
 begin
   clk <= not clk after 11.905 ns;  -- 42 MHz
   reset <= '0' after 2 us;
@@ -36,10 +37,13 @@ begin
               sd_miso => sd_miso, sd_wp_n => '1', osd_ss3 => osd_ss3,
               ps2clk => '1', ps2dat => '1',
               menu_open => menu_open, core_rst => core_rst,
-              fdc_rd => fdc_rd, fdc_wr => fdc_wr, fdc_lba => fdc_lba, fdc_drive => fdc_drive,
+              fdc_rd => fdc_rd, fdc_wr => fdc_wr, fdc_ra => fdc_ra, fdc_track => fdc_track,
+              fdc_trkreg => fdc_trkreg, fdc_sector => fdc_sector, fdc_dam => fdc_dam,
+              fdc_res_found => fdc_res_found, fdc_res_crc => fdc_res_crc, fdc_res_dam => fdc_res_dam,
+              fdc_drive => fdc_drive,
               fdc_side => fdc_side, fdc_ack => fdc_ack, fdc_buff_addr => fdc_buff_addr,
               fdc_buff_dout => fdc_buff_dout, fdc_buff_wr => fdc_buff_wr, fdc_buff_din => fdc_buff_din,
-              drv_ready => drv_ready, drv_wp => drv_wp, drv_two => drv_two);
+              drv_ready => drv_ready, drv_wp => drv_wp);
 
   sdcard : entity work.sdcard_model
     port map (sd_cs_n => sd_cs_n, spi_sck => spi_sck, spi_mosi => spi_mosi, sd_miso => sd_miso);
@@ -48,10 +52,13 @@ begin
     port map (
       clk42m => clk, pllLocked => '1', reset => core_reset, led => open, ntsc => '1',
       cass_in => '0', cass_out => open, turbo => '1',
-      fdc_sd_lba => fdc_lba, fdc_sd_rd => fdc_rd, fdc_sd_wr => fdc_wr, fdc_sd_ack => fdc_ack,
+      fdc_svc_rd => fdc_rd, fdc_svc_wr => fdc_wr, fdc_svc_ra => fdc_ra, fdc_svc_track => fdc_track,
+      fdc_svc_trkreg => fdc_trkreg, fdc_svc_sector => fdc_sector, fdc_svc_dam => fdc_dam,
+      fdc_svc_ack => fdc_ack, fdc_res_found => fdc_res_found, fdc_res_crc => fdc_res_crc,
+      fdc_res_dam => fdc_res_dam,
       fdc_buff_addr => fdc_buff_addr, fdc_buff_dout => fdc_buff_dout, fdc_buff_din => fdc_buff_din,
       fdc_buff_wr => fdc_buff_wr, fdc_drive => fdc_drive, fdc_side => fdc_side,
-      drv_ready => drv_ready, drv_wp => drv_wp, drv_two => drv_two,
+      drv_ready => drv_ready, drv_wp => drv_wp,
       ps2clk => '1', ps2dat => '1',
       ht_rgb => open, hs => open, vs => open, hb => open, vb => open, audiomix => open,
       dn_go => '0', dn_wr => '0', dn_addr => (others => '0'), dn_data => (others => '0'),
@@ -60,5 +67,13 @@ begin
       exp_din => (others => '0'), exp_oe => '0',
       SDRAM_nCS => open, SDRAM_DQ => sd_dq, SDRAM_A => open, SDRAM_DQMH => open, SDRAM_DQML => open,
       SDRAM_nWE => open, SDRAM_nCAS => open, SDRAM_nRAS => open, SDRAM_BA => open, SDRAM_CKE => open);
+
+  -- trace of the floppy service requests
+  process(fdc_rd, fdc_wr, fdc_ra, fdc_ack, fdc_res_found)
+  begin
+    report "svc rd=" & std_logic'image(fdc_rd) & " wr=" & std_logic'image(fdc_wr) & " ra=" & std_logic'image(fdc_ra) &
+           " ack=" & std_logic'image(fdc_ack) & " found=" & std_logic'image(fdc_res_found) &
+           " trk=" & to_hstring(fdc_track) & " reg=" & to_hstring(fdc_trkreg) & " sec=" & to_hstring(fdc_sector);
+  end process;
 
 end sim;

@@ -83,17 +83,21 @@ ports F0-F3; F4 is the drive select latch (bits 0-3 drive, 4 side, 6 wait enable
 NMI through port E4 and a data register access (F3) waits for DRQ or INTRQ when F4 bit 6 is set.
 The IO controller serves 512-byte blocks of the disk image from the SD card.
 
-- Disk images are raw: 18 sectors x 256 bytes per track, tracks in order; a file larger than
-  80 x 18 x 256 bytes is double sided with side 1 following side 0 on every track. A file
-  with the read-only attribute is write protected. `tools/dsk2raw.py` converts JV1, JV3, DMK and
-  HFE images (`python tools/dsk2raw.py in.dmk /CP300/NAME.DSK`, or a whole folder at once, which
-  also writes 8.3 names and an `INDEX.TXT`); `tools/test_dsk2raw.py` is its self-test. The
-  controller only accepts sector IDs 1..18, so disks that number their sectors from 0 (LDOS,
-  NewDOS, MultiDOS) convert but do not work yet.
+- Disk images are **DMK** files (David Keil's format, the usual one for Model III / 4 emulators): put
+  them in `/CP300` with an 8.3 name and the extension `.DSK`. The IO controller finds the sector inside
+  the DMK file, checks its CRC and writes changes back with a correct CRC, so sector IDs, single and
+  double density tracks, deleted data marks and CRC errors are kept as they are on the disk.
+  A file with the read-only attribute (or the write protect byte of the DMK header) is write protected.
+  Only 256-byte sectors are read; one DMK track holds 6400 bytes.
+- `tools/dsk2dmk.py` converts JV1, JV3 and HFE images to DMK (a DMK is copied as it is), one file or a
+  whole folder at once, with 8.3 names and an `INDEX.TXT`: `python tools/dsk2dmk.py D:\DiskImages D:\CP300`.
+  `tools/test_dsk2dmk.py` is its self-test and `tools/test_dmk.py` checks the firmware's DMK reader
+  against the converter's decoder on real images.
 - Supported: RESTORE, SEEK, STEP, READ/WRITE SECTOR (also multiple), READ ADDRESS, FORCE
   INTERRUPT. Not supported: READ TRACK and WRITE TRACK (formatting a disk), the 3 s motor timeout.
 - `sim/run_sys.sh` boots the whole machine in GHDL from a card image (`tools/mkfat.py` builds one
-  whose boot sector tests SEEK, READ and WRITE and prints "BOOT OK" / "FDC OK" on the screen).
+  with a DMK disk, single density track 0 and double density sectors counted from 0, whose boot
+  sector tests SEEK, READ and WRITE and prints "BOOT OK" / "FDC OK" on the screen).
 - Firmware: `firmware/build.sh` (SDCC 4.6.0) rebuilds `rtl/io/io_fw_pkg.vhd`; commit both.
 - Tests: `firmware/tests/host_fat.c` (FAT code on the PC against `tools/mkfat.py` images) and
   `sim/run_io.sh` (the real firmware in GHDL with an SD card model, writes `sim/out/osd_*.pbm`).

@@ -17,12 +17,14 @@ __sfr __at(0x05) GLYPH_ROW;  /* r: next pixel column of the selected glyph (OSD 
 __sfr __at(0x06) GLYPH_SEL;  /* w: select glyph */
 __sfr __at(0x07) ID;         /* r: A5 */
 __sfr __at(0x08) DBG;        /* w: debug byte, reported by the simulation */
-__sfr __at(0x10) FDC_REQ;    /* r: b0 read request, b1 write request, b2 side, b4:3 drive */
-__sfr __at(0x11) FDC_LBA_LO; /* r: 512-byte block of the disk image */
-__sfr __at(0x12) FDC_LBA_HI;
+__sfr __at(0x10) FDC_REQ;    /* r: b0 read sector, b1 write sector, b2 read address, b3 side, b5:4 drive, b6 deleted mark */
+__sfr __at(0x11) FDC_TRK;    /* r: head position */
+__sfr __at(0x12) FDC_TRKREG; /* r: track register */
+__sfr __at(0x16) FDC_RES;    /* w: b0 found, b1 CRC error, b2 deleted mark */
+__sfr __at(0x17) FDC_SEC;    /* r: sector number */
 __sfr __at(0x13) FDC_ACK;    /* w: b0 = servicing a request, buffer port live */
 __sfr __at(0x14) FDC_BUF;    /* rw: sector buffer, auto-increment */
-__sfr __at(0x15) DRV_FLAGS;  /* w: b1:0 drive, b2 present, b3 write protected, b4 two sided */
+__sfr __at(0x15) DRV_FLAGS;  /* w: b1:0 drive, b2 present, b3 write protected */
 #endif
 
 #define CTL_SD_CS   0x01

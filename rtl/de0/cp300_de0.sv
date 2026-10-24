@@ -108,12 +108,13 @@ wire  [1:0] cass_out;
 wire        uart_tx, uart_rts;
 
 // floppy controller <-> IO controller
-wire [10:0] fdc_lba;
-wire        fdc_rd, fdc_wr, fdc_ack, fdc_buff_wr, fdc_side;
+wire  [7:0] fdc_track, fdc_trkreg, fdc_sector;
+wire        fdc_rd, fdc_wr, fdc_ra, fdc_dam, fdc_ack, fdc_buff_wr, fdc_side;
+wire        fdc_res_found, fdc_res_crc, fdc_res_dam;
 wire  [8:0] fdc_buff_addr;
 wire  [7:0] fdc_buff_dout, fdc_buff_din;
 wire  [1:0] fdc_drive;
-wire  [3:0] drv_ready, drv_wp, drv_two;
+wire  [3:0] drv_ready, drv_wp;
 
 always @(posedge clk42) cass_in <= {cass_in[0], CASS_IN};
 
@@ -133,10 +134,17 @@ ht1080z ht1080z (
 	.cass_in(cass_in[1]),
 	.cass_out(cass_out),
 
-	.fdc_sd_lba(fdc_lba),
-	.fdc_sd_rd(fdc_rd),
-	.fdc_sd_wr(fdc_wr),
-	.fdc_sd_ack(fdc_ack),
+	.fdc_svc_rd(fdc_rd),
+	.fdc_svc_wr(fdc_wr),
+	.fdc_svc_ra(fdc_ra),
+	.fdc_svc_track(fdc_track),
+	.fdc_svc_trkreg(fdc_trkreg),
+	.fdc_svc_sector(fdc_sector),
+	.fdc_svc_dam(fdc_dam),
+	.fdc_svc_ack(fdc_ack),
+	.fdc_res_found(fdc_res_found),
+	.fdc_res_crc(fdc_res_crc),
+	.fdc_res_dam(fdc_res_dam),
 	.fdc_buff_addr(fdc_buff_addr),
 	.fdc_buff_dout(fdc_buff_dout),
 	.fdc_buff_din(fdc_buff_din),
@@ -145,7 +153,6 @@ ht1080z ht1080z (
 	.fdc_side(fdc_side),
 	.drv_ready(drv_ready),
 	.drv_wp(drv_wp),
-	.drv_two(drv_two),
 
 	.ps2clk(PS2_KBCLK | menu_open),   // the menu owns the keyboard while it is open
 	.ps2dat(PS2_KBDAT | menu_open),
@@ -225,7 +232,14 @@ io_ctrl io_ctrl (
 	.dbg(io_dbg),
 	.fdc_rd(fdc_rd),
 	.fdc_wr(fdc_wr),
-	.fdc_lba(fdc_lba),
+	.fdc_ra(fdc_ra),
+	.fdc_track(fdc_track),
+	.fdc_trkreg(fdc_trkreg),
+	.fdc_sector(fdc_sector),
+	.fdc_dam(fdc_dam),
+	.fdc_res_found(fdc_res_found),
+	.fdc_res_crc(fdc_res_crc),
+	.fdc_res_dam(fdc_res_dam),
 	.fdc_drive(fdc_drive),
 	.fdc_side(fdc_side),
 	.fdc_ack(fdc_ack),
@@ -234,8 +248,7 @@ io_ctrl io_ctrl (
 	.fdc_buff_wr(fdc_buff_wr),
 	.fdc_buff_din(fdc_buff_din),
 	.drv_ready(drv_ready),
-	.drv_wp(drv_wp),
-	.drv_two(drv_two)
+	.drv_wp(drv_wp)
 );
 
 assign SD_CLK  = spi_sck;

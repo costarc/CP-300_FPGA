@@ -9,15 +9,12 @@
 --    Modifications for track size of 18 x 256 by Stan Hodge (SRH) 9/6/21
 --  as used in the CoCo2_FPGA / MiSTer cores.
 --
---  Changes for this project: VHDL, 256-byte sectors with 18 sectors per
---  track only (no EDSK, no other geometries), the head position is kept per
---  drive, no WRITE TRACK / READ TRACK. Images are raw (see below); a request
---  for a 512-byte block of the image goes to the IO controller through the
---  sd_* signals (MiSTer style handshake), the sector buffer lives here.
---
---  Image layout (sd_lba is the 512-byte block inside the image):
---    byte offset = (track * sides + side) * 18 * 256 + (sector - 1) * 256
---    sides = 1 or 2 (two_sided), i.e. side 1 follows side 0 on every track.
+--  Changes for this project: VHDL, 256-byte sectors, the head position is kept
+--  per drive, no WRITE TRACK / READ TRACK. The controller does not know the
+--  disk image format: it asks the IO controller for a sector (head position,
+--  track register for the ID match, sector number, side) and gets back found /
+--  CRC error / deleted mark; the sector data and the READ ADDRESS bytes travel
+--  through the 512-byte buffer here. The IO controller reads DMK images.
 --
 --  This program is free software; you can redistribute it and/or modify it
 --  under the terms of the GNU General Public License as published by the Free
@@ -55,23 +52,31 @@ entity wd1793 is
     side       : in  std_logic;
     ready      : in  std_logic;
     wp         : in  std_logic;
-    two_sided  : in  std_logic;
 
-    -- sector service (IO controller)
-    sd_lba     : out std_logic_vector(10 downto 0);
-    sd_rd      : out std_logic;
-    sd_wr      : out std_logic;
-    sd_ack     : in  std_logic;
-    sd_buff_addr : in  std_logic_vector(8 downto 0);
-    sd_buff_dout : in  std_logic_vector(7 downto 0);
-    sd_buff_din  : out std_logic_vector(7 downto 0);
-    sd_buff_wr   : in  std_logic
+    -- sector service (IO controller): a request stays up until svc_ack rises; the IO controller
+    -- keeps svc_ack up while it moves data through the buffer and drops it when done
+    svc_rd     : out std_logic;                      -- find the sector, put its data in the buffer
+    svc_wr     : out std_logic;                      -- store the buffer in the sector
+    svc_ra     : out std_logic;                      -- next ID field of the track into buffer bytes 0-5
+    svc_track  : out std_logic_vector(7 downto 0);   -- head position of the drive
+    svc_trkreg : out std_logic_vector(7 downto 0);   -- track register (must match the ID field)
+    svc_sector : out std_logic_vector(7 downto 0);
+    svc_dam    : out std_logic;                      -- write: 1 = deleted data mark
+    svc_ack    : in  std_logic;
+    res_found  : in  std_logic;                      -- sampled when svc_ack falls
+    res_crc    : in  std_logic;                      -- CRC error in the sector
+    res_dam    : in  std_logic;                      -- the sector has a deleted data mark
+    svc_buff_addr : in  std_logic_vector(8 downto 0);
+    svc_buff_dout : in  std_logic_vector(7 downto 0);
+    svc_buff_din  : out std_logic_vector(7 downto 0);
+    svc_buff_wr   : in  std_logic
   );
 end wd1793;
 
 architecture rtl of wd1793 is
 
   type state_t is (S_IDLE, S_SEARCH, S_WAIT_READ, S_WAIT_READ_1, S_WAIT_READ_2,
+                   S_WAIT_RA_1, S_WAIT_RA_2,
                    S_READ, S_READ_1, S_READ_2,
                    S_WAIT_WRITE, S_WAIT_WRITE_1, S_WAIT_WRITE_2,
                    S_WRITE, S_WRITE_1, S_WRITE_2,
@@ -81,8 +86,6 @@ architecture rtl of wd1793 is
   -- sector buffer: one 512-byte block
   type ram_t is array (0 to 511) of std_logic_vector(7 downto 0);
   signal buff_q    : std_logic_vector(7 downto 0) := (others => '0');
-  signal buff_dout : std_logic_vector(7 downto 0);
-  signal buff_a_q  : std_logic_vector(7 downto 0);
   signal buff_wen  : std_logic;
 
   signal byte_addr : unsigned(8 downto 0) := (others => '0');
@@ -95,7 +98,7 @@ architecture rtl of wd1793 is
 
   signal s_readonly : std_logic;
   signal s_crcerr, s_headloaded, s_seekerr, s_index : std_logic := '0';
-  signal s_lostdata, s_wrfault : std_logic := '0';
+  signal s_lostdata, s_wrfault : std_logic := '0';       -- s_wrfault doubles as "record type" after a read
   signal cmd_mode : std_logic := '0';
   signal s_wpe    : std_logic := '1';
   signal s_drq_busy : std_logic_vector(1 downto 0) := "00";
@@ -107,17 +110,14 @@ architecture rtl of wd1793 is
   signal wdreg_sector : unsigned(7 downto 0) := (others => '0');
   signal wdreg_data   : std_logic_vector(7 downto 0) := (others => '0');
   signal wdreg_status : std_logic_vector(7 downto 0);
-
-  type read_addr_t is array (0 to 5) of std_logic_vector(7 downto 0);
-  signal read_addr : read_addr_t := (others => (others => '0'));
   signal q : std_logic_vector(7 downto 0);
 
   signal buff_rd   : std_logic := '0';
   signal buff_wr   : std_logic := '0';
   signal step_direction : std_logic := '0';
 
-  signal buff_a : unsigned(19 downto 0);      -- byte offset of the sector inside the image
-  signal dts    : unsigned(8 downto 0);
+  signal r_found, r_crc, r_dam : std_logic := '0';   -- result of the last request
+  signal dam_sel : std_logic := '0';
 
   signal watchdog_set : std_logic := '0';
   signal wd_timer : unsigned(15 downto 0) := (others => '0');
@@ -134,10 +134,9 @@ architecture rtl of wd1793 is
   signal wait_time : integer range 0 to 4095 := 0;
   signal read_timer : unsigned(3 downto 0) := (others => '0');
   signal seektimer  : unsigned(9 downto 0) := (others => '1');
-  signal ra_sector  : unsigned(7 downto 0) := to_unsigned(1, 8);
   signal ack : std_logic_vector(5 downto 0) := (others => '0');
   signal sd_busy : std_logic := '0';
-  signal sd_rd_r, sd_wr_r : std_logic := '0';
+  signal svc_rd_r, svc_wr_r, svc_ra_r : std_logic := '0';
 
   signal next_track : unsigned(7 downto 0);
   signal next_length : unsigned(8 downto 0);
@@ -150,26 +149,25 @@ begin
   busy  <= s_busy;
   s_drq  <= s_drq_busy(1);
   s_busy <= s_drq_busy(0);
-  sd_rd  <= sd_rd_r;
-  sd_wr  <= sd_wr_r;
+  svc_rd <= svc_rd_r;
+  svc_wr <= svc_wr_r;
+  svc_ra <= svc_ra_r;
+  svc_track  <= std_logic_vector(disk_track);
+  svc_trkreg <= std_logic_vector(wdreg_track);
+  svc_sector <= std_logic_vector(wdreg_sector);
+  svc_dam    <= dam_sel;
   s_readonly <= wp;
   rde <= rd and io_en;
   wre <= wr and io_en;
   watchdog_bark <= '1' when wd_timer = 0 else '0';
   next_length <= data_length - 1;
-  sd_buff_din <= buff_a_q;
-
-  -- image offset of the selected sector (see the layout in the header)
-  dts <= (disk_track & side) when two_sided = '1' else ('0' & disk_track);
-  buff_a <= to_unsigned(to_integer(dts) * 18 + to_integer(wdreg_sector) - 1, 12) & "00000000"
-              when wdreg_sector /= 0 else (others => '0');
-  sd_lba <= std_logic_vector(buff_a(19 downto 9));
+  svc_buff_din <= buff_q;
 
   buff_wen <= '1' when wre = '1' and buff_wr = '1' and addr = "11" else '0';
   trk0 <= '1' when disk_track = 0 else '0';
 
   -- The sector buffer is one single-port RAM. The IO controller owns it while it acknowledges
-  -- a request (sd_ack); the FDC never touches it then.
+  -- a request (svc_ack); the FDC never touches it then.
   process(clk_sys)
     variable ram : ram_t;
     variable a   : integer;
@@ -177,8 +175,8 @@ begin
     variable d   : std_logic_vector(7 downto 0);
   begin
     if rising_edge(clk_sys) then
-      if sd_ack = '1' then
-        a := to_integer(unsigned(sd_buff_addr)); we := sd_buff_wr; d := sd_buff_dout;
+      if svc_ack = '1' then
+        a := to_integer(unsigned(svc_buff_addr)); we := svc_buff_wr; d := svc_buff_dout;
       else
         a := to_integer(byte_addr); we := buff_wen; d := din;
       end if;
@@ -190,8 +188,6 @@ begin
       end if;
     end if;
   end process;
-  buff_dout <= buff_q;
-  buff_a_q  <= buff_q;
 
   with cmd_mode select wdreg_status <=
     (not ready) & (s_readonly and s_wpe) & s_headloaded & (s_seekerr or not ready) &
@@ -199,8 +195,7 @@ begin
     (not ready) & (s_readonly and s_wpe) & s_wrfault & (s_seekerr or not ready) &
       s_crcerr & s_lostdata & s_drq & s_busy when others;
 
-  process(addr, wdreg_status, wdreg_track, wdreg_sector, wdreg_data, state, buff_rd, buff_dout,
-          read_addr, byte_addr)
+  process(addr, wdreg_status, wdreg_track, wdreg_sector, wdreg_data, state, buff_rd, buff_q)
   begin
     case addr is
       when "00" => q <= wdreg_status;
@@ -208,8 +203,8 @@ begin
       when "10" => q <= std_logic_vector(wdreg_sector);
       when others =>
         if state = S_IDLE then q <= wdreg_data;
-        elsif buff_rd = '1' then q <= buff_dout;
-        else q <= read_addr(to_integer(byte_addr(2 downto 0)) mod 6);
+        elsif buff_rd = '1' then q <= buff_q;
+        else q <= x"00";
         end if;
     end case;
   end process;
@@ -247,9 +242,9 @@ begin
         buff_rd <= '0'; buff_wr <= '0'; state <= S_IDLE; cmd_mode <= '0'; s_wpe <= '1';
         s_headloaded <= '0'; s_seekerr <= '0'; s_crcerr <= '0'; s_intrq <= '0';
         s_wrfault <= '0'; s_lostdata <= '0'; s_drq_busy <= "00"; watchdog_set <= '0';
-        seektimer <= (others => '1'); ack <= (others => '0'); sd_wr_r <= '0'; sd_rd_r <= '0';
-        sd_busy <= '0'; ra_sector <= to_unsigned(1, 8); drive_r <= drive;
-        disk_track <= (others => '0');
+        seektimer <= (others => '1'); ack <= (others => '0');
+        sd_busy <= '0'; drive_r <= drive;
+        svc_rd_r <= '0'; svc_wr_r <= '0'; svc_ra_r <= '0'; r_found <= '0'; r_crc <= '0'; r_dam <= '0';
       elsif ce = '1' then
 
         -- the head stays where it is when another drive is selected
@@ -259,9 +254,12 @@ begin
           drive_r <= drive;
         end if;
 
-        ack <= ack(4 downto 0) & sd_ack;
-        if ack(5 downto 4) = "01" then sd_rd_r <= '0'; sd_wr_r <= '0'; end if;
-        if ack(5 downto 4) = "10" then sd_busy <= '0'; end if;
+        ack <= ack(4 downto 0) & svc_ack;
+        if ack(5 downto 4) = "01" then svc_rd_r <= '0'; svc_wr_r <= '0'; svc_ra_r <= '0'; end if;
+        if ack(5 downto 4) = "10" then
+          sd_busy <= '0';
+          r_found <= res_found; r_crc <= res_crc; r_dam <= res_dam;
+        end if;
 
         old_wr <= wre;
         old_rd <= rde;
@@ -284,29 +282,55 @@ begin
               seektimer <= seektimer - 1;
               if seektimer = 0 then
                 byte_addr <= (others => '0');
-                if wdreg_sector = 0 or wdreg_sector > 18 then
-                  s_seekerr <= '1';
-                  state <= S_ENDCOMMAND;
-                elsif rw_type = '1' then
+                if rw_type = '1' then
                   state <= S_WAIT_READ;
                 else
+                  state <= S_WAIT_RA_1;
+                end if;
+              end if;
+            end if;
+
+          -- find the sector and load it (also before a write: that is the record-not-found check)
+          when S_WAIT_READ =>
+            data_length <= to_unsigned(256, 9);
+            byte_addr <= (others => '0');
+            state <= S_WAIT_READ_1;
+          when S_WAIT_READ_1 =>
+            sd_busy <= '1';
+            svc_rd_r <= '1';
+            state <= S_WAIT_READ_2;
+          when S_WAIT_READ_2 =>
+            if sd_busy = '0' then
+              if r_found = '0' then
+                s_seekerr <= '1';
+                state <= S_ENDCOMMAND;
+              else
+                s_crcerr <= r_crc;
+                if write_cmd = '1' then
+                  state <= S_WRITE;
+                else
+                  s_wrfault <= r_dam;               -- status bit 5: record type
                   state <= S_READ;
                 end if;
               end if;
             end if;
 
-          -- read the block that holds the sector (also before a write)
-          when S_WAIT_READ =>
-            data_length <= to_unsigned(256, 9);
-            byte_addr <= buff_a(8) & x"00";
-            state <= S_WAIT_READ_1;
-          when S_WAIT_READ_1 =>
+          -- READ ADDRESS: the next ID field of the track
+          when S_WAIT_RA_1 =>
             sd_busy <= '1';
-            sd_rd_r <= '1';
-            state <= S_WAIT_READ_2;
-          when S_WAIT_READ_2 =>
+            svc_ra_r <= '1';
+            state <= S_WAIT_RA_2;
+          when S_WAIT_RA_2 =>
             if sd_busy = '0' then
-              if write_cmd = '1' then state <= S_WRITE; else state <= S_READ; end if;
+              if r_found = '0' then
+                s_seekerr <= '1';
+                state <= S_ENDCOMMAND;
+              else
+                data_length <= to_unsigned(6, 9);
+                byte_addr <= (others => '0');
+                buff_rd <= '1';
+                state <= S_READ;
+              end if;
             end if;
 
           when S_READ =>
@@ -349,11 +373,14 @@ begin
             end if;
           when S_WAIT_WRITE_1 =>
             sd_busy <= '1';
-            sd_wr_r <= '1';
+            svc_wr_r <= '1';
             state <= S_WAIT_WRITE_2;
           when S_WAIT_WRITE_2 =>
             if sd_busy = '0' then
-              if multisector = '1' then
+              if r_found = '0' then
+                s_wrfault <= '1';
+                state <= S_ENDCOMMAND;
+              elsif multisector = '1' then
                 wdreg_sector <= wdreg_sector + 1;
                 state <= S_SEARCH;
               else
@@ -440,6 +467,7 @@ begin
                     s_drq_busy <= "01";
                     s_wrfault <= '0'; s_seekerr <= '0'; s_crcerr <= '0'; s_lostdata <= '0';
                     write_cmd <= din(5);
+                    dam_sel <= din(0);
                     buff_rd <= not din(5);
                     buff_wr <= din(5);
                     multisector <= din(4);
@@ -461,15 +489,6 @@ begin
                     multisector <= '0';
                     rw_type <= '0';
                     read_data <= '0';
-                    data_length <= to_unsigned(6, 9);
-                    read_addr(0) <= std_logic_vector(disk_track);
-                    read_addr(1) <= "0000000" & side;
-                    read_addr(2) <= std_logic_vector(ra_sector);
-                    read_addr(3) <= x"01";
-                    read_addr(4) <= x"00";
-                    read_addr(5) <= x"00";
-                    if ra_sector >= 18 then ra_sector <= to_unsigned(1, 8);
-                    else ra_sector <= ra_sector + 1; end if;
                     state <= S_SEARCH;
                   when x"D" =>                         -- FORCE INTERRUPT
                     cmd_mode <= '0';
@@ -494,7 +513,7 @@ begin
             when "01" =>
               if s_busy = '0' then wdreg_track <= unsigned(din); end if;
             when "10" =>
-              if s_busy = '0' then wdreg_sector <= unsigned(din); ra_sector <= unsigned(din); end if;
+              if s_busy = '0' then wdreg_sector <= unsigned(din); end if;
             when others =>
               wdreg_data <= din;
           end case;
