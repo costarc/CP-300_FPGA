@@ -55,6 +55,8 @@ entity ht1080z is
               led : out STD_LOGIC;
              ntsc : in  STD_LOGIC;
             turbo : in  STD_LOGIC;
+          cass_in : in  STD_LOGIC;
+         cass_out : out std_logic_vector(1 downto 0);
 
            ps2clk : in  STD_LOGIC;
            ps2dat : in  STD_LOGIC;
@@ -139,7 +141,7 @@ signal rgbi : std_logic_vector(3 downto 0);
 signal romdo,vramdo,ramdo,ramHdo,kbdout : std_logic_vector(7 downto 0);
 signal vramcs : std_logic;
 
-signal page,vcut,swres : std_logic;
+signal page,swres : std_logic;
 
 signal romrd,ramrd,ramwr,vramsel,kbdsel : std_logic;
 signal ior,iow,memr,memw : std_logic;
@@ -148,14 +150,11 @@ signal vdata : std_logic_vector(7 downto 0);
 signal clk42div : std_logic_vector(4 downto 0) := (others => '0');
 
 signal dacout : std_logic;
-signal sndBC1,sndBDIR,sndCLK : std_logic;
-signal oaudio,snddo : std_logic_vector(7 downto 0); 
+signal oaudio,snddo : std_logic_vector(7 downto 0) := (others => '0'); 
 
 signal p_hs,p_vs,vgahs,vgavs : std_logic; 
 signal pclk : std_logic; 
 
-signal io_ram_addr : std_logic_vector(23 downto 0);
-signal iorrd,iorrd_r : std_logic;
 
 signal tapebits : std_logic_vector(2 downto 0); 
 signal  speaker : std_logic_vector(7 downto 0); 
@@ -163,6 +162,15 @@ signal vga : std_logic := '0';
 signal oddline : std_logic;
 
 signal inkpulse, paperpulse, borderpulse : std_logic;
+
+-- Model III I/O
+signal ec      : std_logic_vector(7 downto 0) := (others => '0'); -- port EC write latch
+signal intmask : std_logic_vector(7 downto 0) := (others => '0'); -- port E0 write
+signal intstat : std_logic_vector(7 downto 0) := (others => '0'); -- active-high latches; bit 2 = 30 Hz RTC
+signal nmimask : std_logic_vector(7 downto 0) := (others => '0'); -- port E4 write
+signal fdc_intrq, fdc_motoff : std_logic := '0'; -- phase 3: WD1793 INTRQ, motor timeout
+signal rtc_cnt : integer range 0 to 1399999 := 0; -- 42 MHz / 30 Hz
+signal e0sel, e4sel, ecsel, ffsel : std_logic;
 
 begin
 
@@ -172,8 +180,8 @@ begin
   begin
     if rising_edge(clk42m) then
 	    clk42div <= clk42div + 1;
-		 -- 42 MHz/24 = 1.75 MHz
-		 if clk42div = 23 then clk42div <= (others => '0'); end if;
+		 -- 42 MHz/21 = 2.0 MHz (CP-300)
+		 if clk42div = 20 then clk42div <= (others => '0'); end if;
 	 end if;
   end process;
   
@@ -188,7 +196,15 @@ begin
   ramwr <= '1' when cpua(15 downto 14)/="00" and memw='0' else '0';
   vramsel <= '1' when cpua(15 downto 10)="001111" and cpumreq='0' else '0';
   kbdsel  <= '1' when cpua(15 downto 10)="001110" and memr='0' else '0';
-  iorrd <= '1' when ior='0' and cpua(7 downto 0)=x"04" else '0'; -- in 04
+  e0sel <= '1' when cpua(7 downto 0)=x"e0" else '0';
+  e4sel <= '1' when cpua(7 downto 0)=x"e4" else '0';
+  ecsel <= '1' when cpua(7 downto 0)=x"ec" else '0';
+  ffsel <= '1' when cpua(7 downto 0)=x"ff" else '0';
+
+  -- IM 1 timer interrupt and NMI: masked latches, active low
+  cpuint <= '0' when (intstat and intmask) /= x"00" else '1';
+  cpunmi <= '0' when (fdc_intrq = '1' and nmimask(7) = '1') or (fdc_motoff = '1' and nmimask(6) = '1') else '1';
+  cass_out <= tapebits(1 downto 0);
 
   exp_addr <= cpua;
   exp_out <= not iow;
@@ -199,10 +215,10 @@ begin
    port map (  
 	   RESET_n => autores, --swres,
 		CLK     => clk42m, 
-		CEN     => cpuClkEn and not dn_go, -- 1.75 MHz
+		CEN     => cpuClkEn and not dn_go, -- 2.0 MHz
 		WAIT_n  => '1',
-		INT_n   => '1',
-		NMI_n   => '1',
+		INT_n   => cpuint,
+		NMI_n   => cpunmi,
 		BUSRQ_n => '1',
 		M1_n    => cpum1,
 		MREQ_n  => cpumreq,
@@ -229,8 +245,12 @@ begin
 			  -- sees Track 0 after its Restore and waits forever for a boot sector;
 			  -- a CP-300 without the disk unit times out and goes to "Cass?".
 			  x"00" when ior='0' and cpua(7 downto 3)="11110" else
-			  ram_dout when iorrd='1' else
-			  x"ff";
+				  -- Model III: E0 interrupt status (active low), E4 NMI status (bit 7 INTRQ,
+				  -- bit 6 motor timeout, active low), FF bit 7 cassette input
+				  not (intstat and intmask) when ior='0' and e0sel='1' else
+				  not (fdc_intrq & fdc_motoff & "000000") when ior='0' and e4sel='1' else
+				  cass_in & "1111111" when ior='0' and ffsel='1' else
+				  x"ff";
 
   -- the CP-300 character generator has its own glyphs for 00-1F
   vdata <= cpudo;
@@ -255,7 +275,8 @@ begin
 		  wr => cpuwr,
 		  cs => not vramsel,
 		hz60 => ntsc,
-		vcut => vcut,
+		vcut => ec(2),
+			kana => ec(3),
 		vvga => '0',
 		page => page,
 		rgbi => rgbi, 
@@ -280,53 +301,18 @@ begin
 		    A => cpua(7 downto 0),
 		 DOUT => kbdout,
 		 PAGE => page,
-		 VCUT => vcut,
+		 VCUT => open,
 		 INKP => inkpulse,
 	  PAPERP => paperpulse,
 	 BORDERP => borderpulse
 		  );
 	
-	-- PSG 
-	-- out 1e = data port
-	-- out 1f = register index
-
- soundchip : entity work.YM2149 
-   port map (
-  -- data bus
-  I_DA      => cpudo,     
-  O_DA      => open,     
-  O_DA_OE_L => open,     
-  -- control
-  I_A9_L   	=> '0',      
-  I_A8      => '1',     
-  I_BDIR    => sndBDIR,     
-  I_BC2     => '1',     
-  I_BC1     => sndBC1,     
-  I_SEL_L   => '1',     
-
-  O_AUDIO   => oaudio,     
-  -- port a
-  I_IOA      => "ZZZZZZZZ",     
-  O_IOA      => open,     
-  O_IOA_OE_L => open,         
-  -- port b
-  I_IOB      => "ZZZZZZZZ",         
-  O_IOB      => open,         
-  O_IOB_OE_L => open,         
-  --
-  ENA        => cpuClkEn,
-  RESET_L    => autores,--swres and pllLocked,    
-  CLK        => clk42m
-  );
-  sndBDIR <= '1' when cpua(7 downto 1)="0001111" and iow='0' else '0';
-  sndBC1  <= cpua(0);
-	  
   with tapebits select speaker <=
    "00100000" when "001",
 	"00010000" when "000"|"011",
    "00000000" when others;
  
-  audiomix <= ('0' & oaudio) + ('0' & speaker); 
+  audiomix <= '0' & speaker; 
  	 
 	-- fix palette for now
 	--with rgbi select rgb <=
@@ -370,8 +356,8 @@ begin
   ram_we <= ((not memw) and (cpua(15) or cpua(14))) when dn_go='0' else dn_wr_r; 
   --ram_oe <= not memr when dn_go='0' else '0';
   
-  ram_addr <= "0" & io_ram_addr when iorrd='1' else "000000000" & cpua when dn_go='0' else dn_addr_r; 
-  ram_oe <= '1' when iorrd='1' else not memr when dn_go='0' else '0';
+  ram_addr <= "000000000" & cpua when dn_go='0' else dn_addr_r; 
+  ram_oe <= not memr when dn_go='0' else '0';
 	 
   -- sdram interface
   SDRAM_CKE <= '1';
@@ -417,38 +403,44 @@ begin
    end if;
  end process;
  
- cpuClkEn <= '1' when clk42div = 0 or (turbo = '1' and clk42div = 12) else '0'; -- 42/24 = 1.75 MHz
- clkref <= '1' when clk42div = 0 or clk42div = 12 else '0'; -- 42/24*2 = 3.5 MHz
+ cpuClkEn <= '1' when clk42div = 0 or (turbo = '1' and clk42div = 10) else '0'; -- 42/21 = 2.0 MHz
+ clkref <= '1' when clk42div = 0 or clk42div = 10 else '0'; -- ~4 MHz
  autores <= '1' when res_cnt="111111" else '0';   
 
 
+ -- Model III I/O ports
  process (clk42m)
  begin
-   if rising_edge(clk42m) then  
-      if dn_go='1' or autores='0' then
-	     io_ram_addr <= x"010000"; -- above 64k
-	     iorrd_r<='0';
-		elsif cpuClkEn = '1' then
-		  if iow='0' and cpua(7 downto 0)=x"ff" then 
-		    tapebits <= cpudo(2 downto 0);
-		  end if;
-		  if iow='0' and cpua(7 downto 2)="000001" then -- out 4 5 6
-			 case cpua(1 downto 0) is
-				when "00"=> io_ram_addr(7 downto 0) <= cpudo;
-				when "01"=> io_ram_addr(15 downto 8) <= cpudo;
-				when "10"=> io_ram_addr(23 downto 16) <= cpudo;
-				when others => null;
-			 end case;
-		  end if;
-		  iorrd_r<=iorrd;
-		  if iorrd='0' and iorrd_r='1' then
-			 io_ram_addr <= io_ram_addr + 1;
-		  end if;
-		end if;
-	end if;
+   if rising_edge(clk42m) then
+     if dn_go='1' or autores='0' then
+       tapebits <= "000";
+       ec <= (others => '0');
+       intmask <= (others => '0');
+       intstat <= (others => '0');
+       nmimask <= (others => '0');
+       rtc_cnt <= 0;
+     else
+       -- 30 Hz real-time clock
+       if rtc_cnt = 1399999 then
+         rtc_cnt <= 0;
+         intstat(2) <= '1';
+       else
+         rtc_cnt <= rtc_cnt + 1;
+       end if;
+       if cpuClkEn = '1' then
+         if iow='0' then
+           if ffsel='1' then tapebits <= cpudo(2 downto 0); end if;
+           if e0sel='1' then intmask <= cpudo; end if;
+           if e4sel='1' then nmimask <= cpudo; end if;
+           if ecsel='1' then ec <= cpudo; end if;
+         end if;
+         -- reading EC acknowledges the RTC interrupt
+         if ior='0' and ecsel='1' then intstat(2) <= '0'; end if;
+       end if;
+     end if;
+   end if;
  end process;
 
- 
 -- synthesis translate_off
 -- Simulation only: log opcode fetches and memory writes to trace.txt
 -- between TRACE_FROM and TRACE_TO (sim/run.sh generates sim_trace_cfg).

@@ -37,6 +37,8 @@ begin
       reset     => reset,
       led       => open,
       ntsc      => '1',
+      cass_in   => '0',
+      cass_out  => open,
       turbo     => '1',  -- 3.5 MHz: the no-disk timeout before "Cass?" is ~4.8M T-states
       ps2clk    => '1',
       ps2dat    => '1',

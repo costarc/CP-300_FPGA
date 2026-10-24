@@ -68,6 +68,7 @@ entity videoctrl is
 				  cs : in  STD_LOGIC;
 				hz60 : in  STD_LOGIC;
 				vcut : in  STD_LOGIC;
+				kana : in  STD_LOGIC;
 				vvga : in  STD_LOGIC;
 				page : in  STD_LOGIC;
 				inkp : in  STD_LOGIC;
@@ -201,14 +202,6 @@ begin
 		  border <= border+1;
 		end if;					  
 			
-	 if iorq='0' and wr='0' and a(7 downto 2)="000000" then
-	   case a(1 downto 0) is
-		  when "00"=> ink<=din(3 downto 0);
-		  when "01"=> paper<=din(3 downto 0);
-		  when "10"=> border<=din(3 downto 0);		  
-		  when others=>null;
-		end case;
-	 end if;
   end if;  
  end if;
 end process;
@@ -227,8 +220,8 @@ end process;
 
 -- CP-300 character generator CI-59 (900-65): 8 scan lines per glyph,
 -- lines 8-11 of the 12-line character row are blank. C0-FF show the
--- special symbols (ROM 80-BF); the kana set needs port EC (phase 2).
-chraddr <= ("10" & chrCode(5 downto 0) & vpos(2 downto 0)) when chrCode(7 downto 6)="11" else
+-- special symbols (ROM 80-BF), or the kana set (ROM C0-FF) when port EC bit 3 is set.
+chraddr <= ("10" & chrCode(5 downto 0) & vpos(2 downto 0)) when chrCode(7 downto 6)="11" and kana='0' else
            (chrCode & vpos(2 downto 0));
 
 process(clk42)

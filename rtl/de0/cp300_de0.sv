@@ -94,7 +94,7 @@ wire  [8:0] audio;
 wire        hs, vs, hb, vb;
 wire        ledb;
 reg   [1:0] cass_in;
-wire        cass_out = 0;
+wire  [1:0] cass_out;
 wire        uart_tx, uart_rts;
 
 always @(posedge clk42) cass_in <= {cass_in[0], CASS_IN};
@@ -112,6 +112,8 @@ ht1080z ht1080z (
 	.led(ledb),
 	.ntsc(ntsc),
 	.turbo(turbo),
+	.cass_in(cass_in[1]),
+	.cass_out(cass_out),
 
 	.ps2clk(PS2_KBCLK),
 	.ps2dat(PS2_KBDAT),
@@ -199,7 +201,7 @@ mist_video #(.COLOR_DEPTH(6), .SD_HCNT_WIDTH(10), .OUT_COLOR_DEPTH(4), .USE_BLAN
 	.no_csync       ( 1'b1             )
 );
 
-wire [14:0] audio_mix = {1'b0, audio, 5'd0} + (tapesnd ? {cass_in[1], cass_out, 10'd0} : 14'd0);
+wire [14:0] audio_mix = {1'b0, audio, 5'd0} + (tapesnd ? {cass_in[1], cass_out[0], 10'd0} : 14'd0);
 dac #(.C_bits(15)) dac(
 	.clk_i(clk42),
 	.res_n_i(1'b1),
