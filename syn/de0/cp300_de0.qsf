@@ -210,3 +210,8 @@ set_instance_assignment -name FAST_INPUT_REGISTER ON -to DRAM_DQ[*]
 set_instance_assignment -name FAST_OUTPUT_ENABLE_REGISTER ON -to DRAM_DQ[*]
 
 set_global_assignment -name LAST_QUARTUS_VERSION "13.0 SP1"
+
+# DE0 configuration flash (EPCS4, active serial): the assembler also writes output_files/cp300_de0.pof
+set_global_assignment -name CYCLONEIII_CONFIGURATION_SCHEME "ACTIVE SERIAL"
+set_global_assignment -name USE_CONFIGURATION_DEVICE ON
+set_global_assignment -name CYCLONEIII_CONFIGURATION_DEVICE EPCS4

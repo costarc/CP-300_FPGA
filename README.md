@@ -52,7 +52,10 @@ python tools/mkroms.py
 quartus_sh --flow compile syn/de0/cp300_de0
 ```
 
-Program `syn/de0/output_files/cp300_de0.sof` with the Quartus programmer (USB-Blaster on the DE0).
+The build writes two files in `syn/de0/output_files/`:
+
+- `cp300_de0.sof`: load into the FPGA (JTAG, lost at power-off). DE0 RUN/PROG switch on RUN, Quartus Programmer mode "JTAG".
+- `cp300_de0.pof`: write to the DE0's EPCS4 configuration flash so the design loads at every power-on. RUN/PROG switch on PROG, Programmer mode "Active Serial Programming", tick Program/Configure, Start; then set the switch back to RUN and power-cycle.
 
 Boot simulation (GHDL 6, prints the screen of the last frame):
 
