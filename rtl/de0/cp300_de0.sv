@@ -106,6 +106,14 @@ reg   [1:0] cass_in;
 wire  [1:0] cass_out;
 wire        uart_tx, uart_rts;
 
+// floppy controller <-> IO controller
+wire [10:0] fdc_lba;
+wire        fdc_rd, fdc_wr, fdc_ack, fdc_buff_wr, fdc_side;
+wire  [8:0] fdc_buff_addr;
+wire  [7:0] fdc_buff_dout, fdc_buff_din;
+wire  [1:0] fdc_drive;
+wire  [3:0] drv_ready, drv_wp, drv_two;
+
 always @(posedge clk42) cass_in <= {cass_in[0], CASS_IN};
 
 wire [15:0] exp_addr;
@@ -123,6 +131,20 @@ ht1080z ht1080z (
 	.turbo(turbo),
 	.cass_in(cass_in[1]),
 	.cass_out(cass_out),
+
+	.fdc_sd_lba(fdc_lba),
+	.fdc_sd_rd(fdc_rd),
+	.fdc_sd_wr(fdc_wr),
+	.fdc_sd_ack(fdc_ack),
+	.fdc_buff_addr(fdc_buff_addr),
+	.fdc_buff_dout(fdc_buff_dout),
+	.fdc_buff_din(fdc_buff_din),
+	.fdc_buff_wr(fdc_buff_wr),
+	.fdc_drive(fdc_drive),
+	.fdc_side(fdc_side),
+	.drv_ready(drv_ready),
+	.drv_wp(drv_wp),
+	.drv_two(drv_two),
 
 	.ps2clk(PS2_KBCLK | menu_open),   // the menu owns the keyboard while it is open
 	.ps2dat(PS2_KBDAT | menu_open),
@@ -198,7 +220,20 @@ io_ctrl io_ctrl (
 	.ps2clk(PS2_KBCLK),
 	.ps2dat(PS2_KBDAT),
 	.menu_open(menu_open),
-	.core_rst(core_rst)
+	.core_rst(core_rst),
+	.fdc_rd(fdc_rd),
+	.fdc_wr(fdc_wr),
+	.fdc_lba(fdc_lba),
+	.fdc_drive(fdc_drive),
+	.fdc_side(fdc_side),
+	.fdc_ack(fdc_ack),
+	.fdc_buff_addr(fdc_buff_addr),
+	.fdc_buff_dout(fdc_buff_dout),
+	.fdc_buff_wr(fdc_buff_wr),
+	.fdc_buff_din(fdc_buff_din),
+	.drv_ready(drv_ready),
+	.drv_wp(drv_wp),
+	.drv_two(drv_two)
 );
 
 assign SD_CLK  = spi_sck;

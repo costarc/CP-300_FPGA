@@ -72,8 +72,24 @@ Optionally put a 512-byte `CP300.CFG` there; the selected files are saved in it.
 
 - **F12** opens or closes the menu; Up/Down, Enter, Esc, PgUp/PgDn move around. The CP-300
   does not see the keys while the menu is open.
-- The menu lists Drive 0-3, the cassette file and a CP-300 reset. Choosing a file only records
-  the selection for now: the floppy controller (port F0-F7) and cassette player are the next steps.
+- The menu lists Drive 0-3, the cassette file and a CP-300 reset. Choosing a file for a drive
+  mounts it at once (a floppy swap); the cassette player is the next step. The CP-300 is held in
+  reset while the card is read, so the disks in `CP300.CFG` are mounted before the ROM boots.
+
+## Floppy controller
+
+`rtl/fdc/wd1793.vhd` is a WD1793 replica (VHDL port of the Slavinsky / Sorgelig core, GPL) at
+ports F0-F3; F4 is the drive select latch (bits 0-3 drive, 4 side, 6 wait enable). INTRQ goes to
+NMI through port E4 and a data register access (F3) waits for DRQ or INTRQ when F4 bit 6 is set.
+The IO controller serves 512-byte blocks of the disk image from the SD card.
+
+- Disk images are raw: 18 sectors x 256 bytes per track, tracks in order; a file larger than
+  80 x 18 x 256 bytes is double sided with side 1 following side 0 on every track. A file
+  with the read-only attribute is write protected. `tools/dsk2raw.py` (JV3/DMK) is not written yet.
+- Supported: RESTORE, SEEK, STEP, READ/WRITE SECTOR (also multiple), READ ADDRESS, FORCE
+  INTERRUPT. Not supported: READ TRACK and WRITE TRACK (formatting a disk), the 3 s motor timeout.
+- `sim/run_sys.sh` boots the whole machine in GHDL from a card image (`tools/mkfat.py` builds one
+  whose boot sector tests SEEK, READ and WRITE and prints "BOOT OK" / "FDC OK" on the screen).
 - Firmware: `firmware/build.sh` (SDCC 4.6.0) rebuilds `rtl/io/io_fw_pkg.vhd`; commit both.
 - Tests: `firmware/tests/host_fat.c` (FAT code on the PC against `tools/mkfat.py` images) and
   `sim/run_io.sh` (the real firmware in GHDL with an SD card model, writes `sim/out/osd_*.pbm`).

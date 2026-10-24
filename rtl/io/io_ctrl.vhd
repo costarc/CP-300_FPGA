@@ -13,11 +13,19 @@
 --       w: b0 SD chip select, b1 OSD select (SS3), b2 slow clock (card init)
 --   02  r: b0 PS/2 byte available   w: flush the PS/2 FIFO
 --   03  r: pop one raw PS/2 byte
---   04  w: b0 menu open (core keyboard muted), b1 hold the core in reset
+--   04  w: b0 menu open (core keyboard muted), b1 hold the core in reset (set after reset)
 --   05  r: next pixel column (0..7) of the glyph selected through port 06, as an OSD byte
 --       (bit 0 = top line, the format the MiST OSD wants); the 8 columns follow each other
 --   06  w: select a character generator glyph (code); column counter back to 0
 --   07  r: A5 (identification)
+--   08  w: debug byte (reported in simulation)
+--   10  r: floppy controller request: b0 read, b1 write, b2 side, b4:3 drive
+--   11  r: block number (512-byte block inside the disk image), low 8 bits
+--   12  r: block number, high 3 bits
+--   13  w: b0 = acknowledge: the buffer pointer goes to 0 and the buffer port is live while set
+--   14  rw: sector buffer data port, 512 bytes, auto-increment (write fills it for a read request,
+--       read empties it for a write request)
+--   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected, b4 two sided
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -41,7 +49,22 @@ entity io_ctrl is
     ps2dat    : in  std_logic;
 
     menu_open : out std_logic;
-    core_rst  : out std_logic
+    core_rst  : out std_logic;
+
+    -- floppy controller sector service
+    fdc_rd      : in  std_logic;
+    fdc_wr      : in  std_logic;
+    fdc_lba     : in  std_logic_vector(10 downto 0);
+    fdc_drive   : in  std_logic_vector(1 downto 0);
+    fdc_side    : in  std_logic;
+    fdc_ack     : out std_logic;
+    fdc_buff_addr : out std_logic_vector(8 downto 0);
+    fdc_buff_dout : out std_logic_vector(7 downto 0);
+    fdc_buff_wr   : out std_logic;
+    fdc_buff_din  : in  std_logic_vector(7 downto 0);
+    drv_ready   : out std_logic_vector(3 downto 0);
+    drv_wp      : out std_logic_vector(3 downto 0);
+    drv_two     : out std_logic_vector(3 downto 0)
   );
 end io_ctrl;
 
@@ -61,7 +84,11 @@ architecture rtl of io_ctrl is
   signal rom_do, ram_do : std_logic_vector(7 downto 0) := (others => '0');
   signal ram     : ram_t := (others => (others => '0'));
   signal rom_sel, ram_sel : std_logic;
-  signal iord, iowr, iord_q, rdp : std_logic;
+  signal iord, iowr, iord_q, iowr_q, rdp, wrp : std_logic;
+  signal ack_r, bw_r : std_logic := '0';
+  signal baddr : unsigned(8 downto 0) := (others => '0');
+  signal bdout : std_logic_vector(7 downto 0) := (others => '0');
+  signal dr_ready, dr_wp, dr_two : std_logic_vector(3 downto 0) := (others => '0');
   signal rd_port : std_logic_vector(7 downto 0) := (others => '0');
   signal port_a  : std_logic_vector(7 downto 0);
 
@@ -99,6 +126,7 @@ begin
     if rising_edge(clk) then
       if cen = '1' then
         iord_q <= iord;
+        iowr_q <= iowr;
         if iord = '1' then rd_port <= port_a; end if;
       end if;
     end if;
@@ -139,6 +167,7 @@ begin
   iord    <= '1' when iorq_n = '0' and rd_n = '0' and m1_n = '1' else '0';
   iowr    <= '1' when iorq_n = '0' and wr_n = '0' else '0';
   -- side effects of an IN happen once, after the CPU has taken the data (end of the bus cycle)
+  wrp     <= iowr and not iowr_q;
   rdp     <= iord_q and not iord;
   rom_sel <= '1' when a(15 downto 14) = "00" else '0';
   ram_sel <= '1' when a(15 downto 13) = "010" else '0';
@@ -261,12 +290,46 @@ begin
 
   -- synthesis translate_on
 
+  -- floppy controller sector buffer window
+  process(clk)
+    variable d : integer;
+  begin
+    if rising_edge(clk) then
+      bw_r <= '0';
+      if reset = '1' then
+        ack_r <= '0'; baddr <= (others => '0');
+        dr_ready <= (others => '0'); dr_wp <= (others => '0'); dr_two <= (others => '0');
+      else
+        if bw_r = '1' then baddr <= baddr + 1; end if;
+        if cen = '1' and rdp = '1' and rd_port = x"14" then baddr <= baddr + 1; end if;
+        if cen = '1' and wrp = '1' then
+          case port_a is
+            when x"13" =>
+              ack_r <= cpu_do(0);
+              if cpu_do(0) = '1' then baddr <= (others => '0'); end if;
+            when x"14" =>
+              bdout <= cpu_do; bw_r <= '1';
+            when x"15" =>
+              d := to_integer(unsigned(cpu_do(1 downto 0)));
+              dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3); dr_two(d) <= cpu_do(4);
+            when others => null;
+          end case;
+        end if;
+      end if;
+    end if;
+  end process;
+  fdc_ack <= ack_r;
+  fdc_buff_addr <= std_logic_vector(baddr);
+  fdc_buff_dout <= bdout;
+  fdc_buff_wr <= bw_r;
+  drv_ready <= dr_ready; drv_wp <= dr_wp; drv_two <= dr_two;
+
   -- control register and glyph select
   process(clk)
   begin
     if rising_edge(clk) then
       if reset = '1' then
-        ctl4 <= (others => '0');
+        ctl4 <= "10";                    -- the CP-300 waits in reset until the firmware has mounted the disks
       elsif cen = '1' and iowr = '1' then
         if port_a = x"04" then ctl4 <= cpu_do(1 downto 0); end if;
       end if;
@@ -285,6 +348,10 @@ begin
         "0000000" & kbd_avail when port_a = x"02" else
         fifo_do when port_a = x"03" else
         gcolbyte when port_a = x"05" else
+        "000" & fdc_drive & fdc_side & fdc_wr & fdc_rd when port_a = x"10" else
+        fdc_lba(7 downto 0) when port_a = x"11" else
+        "00000" & fdc_lba(10 downto 8) when port_a = x"12" else
+        fdc_buff_din when port_a = x"14" else
         x"A5"   when port_a = x"07" else
         x"00";
 

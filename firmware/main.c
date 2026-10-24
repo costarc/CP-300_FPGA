@@ -54,6 +54,10 @@ static uint8_t top;
 
 static uint8_t sector[512];
 
+/* floppy drives: the image file behind each drive */
+static file_t drive_file[NDRIVES];
+static uint8_t drive_ok[NDRIVES];
+
 static const char cfg_magic[] = "C3";
 static const char ext_dsk[] = "DSK";
 static const char ext_cas[] = "CAS";
@@ -231,9 +235,60 @@ static void cfg_save(void)
 	file_write(&cfg_file, 0, sector);
 }
 
+/* tell the floppy controller what is in drive d */
+static void mount_drive(uint8_t d)
+{
+	dirent_t e;
+	uint8_t flags = d;
+
+	drive_ok[d] = 0;
+	if (have_dir && mount_name[d][0] != ' ' && dir_find(cp300_dir, mount_name[d], &e)) {
+		file_open(&drive_file[d], &e);
+		drive_ok[d] = 1;
+		flags |= 0x04;
+		if (e.attr & 0x01)
+			flags |= 0x08;
+		if (e.size > 368640UL)          /* more than 80 x 18 x 256: two sided */
+			flags |= 0x10;
+	}
+	DRV_FLAGS = flags;
+}
+
+/* answer a block request of the floppy controller */
+static void fdc_service(void)
+{
+	uint8_t req = FDC_REQ;
+	uint8_t d;
+	uint16_t n;
+	uint32_t blk;
+
+	if (!(req & 3))
+		return;
+	d = (req >> 3) & 3;
+	blk = FDC_LBA_HI;
+	blk = (blk << 8) | FDC_LBA_LO;
+	if (req & 1) {
+		if (!drive_ok[d] || file_read(&drive_file[d], blk, sector))
+			for (n = 0; n < 512; n++)
+				sector[n] = 0;
+		FDC_ACK = 1;
+		for (n = 0; n < 512; n++)
+			FDC_BUF = sector[n];
+		FDC_ACK = 0;
+	} else {
+		FDC_ACK = 1;
+		for (n = 0; n < 512; n++)
+			sector[n] = FDC_BUF;
+		FDC_ACK = 0;
+		if (drive_ok[d] && !(drive_file[d].size == 0))
+			file_write(&drive_file[d], blk, sector);
+	}
+}
+
 static void card_start(void)
 {
 	dirent_t e;
+	uint8_t i;
 
 	sd_ok = 0;
 	have_dir = 0;
@@ -250,6 +305,8 @@ static void card_start(void)
 		cp300_dir = e.clus;
 		have_dir = 1;
 		cfg_load();
+		for (i = 0; i < NDRIVES; i++)
+			mount_drive(i);
 	}
 }
 
@@ -430,6 +487,8 @@ static void browse_key(uint8_t k)
 	case K_ENTER:
 		for (j = 0; j < 11; j++)
 			mount_name[browse_target][j] = list[cursor][j];
+		if (browse_target < NDRIVES)
+			mount_drive(browse_target);
 		cfg_save();
 		state = ST_MAIN;
 		draw_main();
@@ -446,9 +505,10 @@ void main(void)
 {
 	uint8_t k;
 
-	CTRL = 0;
 	card_start();
+	CTRL = 0;                /* release the CP-300, it has been held in reset since power-on */
 	for (;;) {
+		fdc_service();
 		k = key_get();
 		if (!k)
 			continue;

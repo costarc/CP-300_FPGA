@@ -15,7 +15,7 @@ for f in \
   rtl/T80/T80_Pack.vhd rtl/T80/T80_ALU.vhd rtl/T80/T80_MCode.vhd rtl/T80/T80_Reg.vhd \
   rtl/T80/T80.vhd rtl/T80/T80s.vhd \
   roms/cp300_roms_pkg.vhd rtl/io/io_fw_pkg.vhd rtl/ht1080z/ps2reader.vhd \
-  rtl/io/io_ctrl.vhd sim/tb_io.vhd
+  rtl/io/io_ctrl.vhd sim/sdcard_model.vhd sim/tb_io.vhd
 do
   $GHDL -a $OPTS "$ROOT/$f"
 done

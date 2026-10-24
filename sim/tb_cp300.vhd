@@ -39,6 +39,10 @@ begin
       ntsc      => '1',
       cass_in   => '0',
       cass_out  => open,
+      fdc_sd_lba => open, fdc_sd_rd => open, fdc_sd_wr => open, fdc_sd_ack => '0',
+      fdc_buff_addr => (others => '0'), fdc_buff_dout => (others => '0'), fdc_buff_din => open,
+      fdc_buff_wr => '0', fdc_drive => open, fdc_side => open,
+      drv_ready => "0000", drv_wp => "0000", drv_two => "0000",
       turbo     => '1',  -- 3.5 MHz: the no-disk timeout before "Cass?" is ~4.8M T-states
       ps2clk    => '1',
       ps2dat    => '1',

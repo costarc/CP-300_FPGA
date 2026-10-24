@@ -79,7 +79,7 @@ int main(int argc, char **argv)
 		printf("  %.11s attr %02X clus %u size %u\n", e.name, e.attr, e.clus, e.size);
 		n++;
 	}
-	CHECK(n == 5);          /* "." + 4 files; the LFN and deleted entries are skipped */
+	CHECK(n == 6);          /* "." + 5 files; the LFN and deleted entries are skipped */
 
 	check_file(cp300, "TRSDOS13DSK", 40 * 18 * 256, 1);
 	check_file(cp300, "LDOS    DSK", 40 * 18 * 256 + 512, 2);

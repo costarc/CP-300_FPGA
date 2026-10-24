@@ -11,6 +11,13 @@ static unsigned pos;
 #define CTRL host_ctrl
 #define GLYPH_SEL glyph_sel
 #define GLYPH_ROW 0
+#define FDC_REQ 0
+#define FDC_LBA_LO 0
+#define FDC_LBA_HI 0
+#define FDC_ACK host_ack
+#define FDC_BUF host_buf
+#define DRV_FLAGS host_flags
+static uint8_t host_ack, host_buf, host_flags;
 static unsigned osd_lines, osd_en;
 void osd_select(uint8_t on) { (void)on; }
 uint8_t spi_xfer(uint8_t b) { if ((b & 0xF0) == 0x20) osd_lines++; if (b == 0x41) osd_en++; if (b == 0x40) osd_en = 0; return 0; }

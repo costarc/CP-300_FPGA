@@ -58,6 +58,21 @@ entity ht1080z is
           cass_in : in  STD_LOGIC;
          cass_out : out std_logic_vector(1 downto 0);
 
+         -- floppy controller: images are served by the IO controller
+        fdc_sd_lba : out std_logic_vector(10 downto 0);
+         fdc_sd_rd : out std_logic;
+         fdc_sd_wr : out std_logic;
+        fdc_sd_ack : in  std_logic;
+     fdc_buff_addr : in  std_logic_vector(8 downto 0);
+     fdc_buff_dout : in  std_logic_vector(7 downto 0);
+      fdc_buff_din : out std_logic_vector(7 downto 0);
+       fdc_buff_wr : in  std_logic;
+         fdc_drive : out std_logic_vector(1 downto 0);
+          fdc_side : out std_logic;
+         drv_ready : in  std_logic_vector(3 downto 0);
+            drv_wp : in  std_logic_vector(3 downto 0);
+           drv_two : in  std_logic_vector(3 downto 0);
+
            ps2clk : in  STD_LOGIC;
            ps2dat : in  STD_LOGIC;
 
@@ -168,9 +183,22 @@ signal ec      : std_logic_vector(7 downto 0) := (others => '0'); -- port EC wri
 signal intmask : std_logic_vector(7 downto 0) := (others => '0'); -- port E0 write
 signal intstat : std_logic_vector(7 downto 0) := (others => '0'); -- active-high latches; bit 2 = 30 Hz RTC
 signal nmimask : std_logic_vector(7 downto 0) := (others => '0'); -- port E4 write
-signal fdc_intrq, fdc_motoff : std_logic := '0'; -- phase 3: WD1793 INTRQ, motor timeout
+signal fdc_intrq, fdc_motoff : std_logic := '0'; -- WD1793 INTRQ, motor timeout (not modelled)
 signal rtc_cnt : integer range 0 to 1399999 := 0; -- 42 MHz / 30 Hz
 signal e0sel, e4sel, ecsel, ffsel : std_logic;
+
+-- floppy controller (ports F0-F3) and drive select latch (F4)
+signal f4      : std_logic_vector(7 downto 0) := (others => '0');
+signal fdcsel, f3sel : std_logic;
+signal fdc_dout : std_logic_vector(7 downto 0);
+signal fdc_drq, fdc_busy : std_logic;
+signal fdc_rdy, fdc_wp_i, fdc_two_i : std_logic;
+signal fdc_drv : std_logic_vector(1 downto 0);
+signal fdc_drv_on : std_logic;
+signal fdc_reset : std_logic;
+signal wait_cnt : std_logic_vector(21 downto 0) := (others => '0');
+signal cpuwait : std_logic;
+signal waiting : std_logic;
 
 begin
 
@@ -200,6 +228,34 @@ begin
   e4sel <= '1' when cpua(7 downto 0)=x"e4" else '0';
   ecsel <= '1' when cpua(7 downto 0)=x"ec" else '0';
   ffsel <= '1' when cpua(7 downto 0)=x"ff" else '0';
+  fdcsel <= '1' when cpua(7 downto 2)="111100" else '0';
+  f3sel  <= '1' when cpua(7 downto 0)=x"f3" else '0';
+
+  -- F4 bits 0-3 select a drive (lowest set bit wins), bit 4 side, bit 6 wait enable
+  fdc_drv_on <= f4(0) or f4(1) or f4(2) or f4(3);
+  fdc_drv    <= "00" when f4(0)='1' else "01" when f4(1)='1' else "10" when f4(2)='1' else "11";
+  fdc_rdy    <= fdc_drv_on and drv_ready(conv_integer(fdc_drv));
+  fdc_wp_i   <= drv_wp(conv_integer(fdc_drv));
+  fdc_two_i  <= drv_two(conv_integer(fdc_drv));
+  fdc_drive  <= fdc_drv;
+  fdc_side   <= f4(4);
+  fdc_reset  <= '1' when autores='0' or dn_go='1' else '0';
+
+  fdc : entity work.wd1793
+    port map (
+      clk_sys => clk42m, ce => cpuClkEn, reset => fdc_reset,
+      io_en => fdcsel, rd => not ior, wr => not iow, addr => cpua(1 downto 0),
+      din => cpudo, dout => fdc_dout, drq => fdc_drq, intrq => fdc_intrq, busy => fdc_busy,
+      drive => fdc_drv, side => f4(4), ready => fdc_rdy, wp => fdc_wp_i, two_sided => fdc_two_i,
+      sd_lba => fdc_sd_lba, sd_rd => fdc_sd_rd, sd_wr => fdc_sd_wr, sd_ack => fdc_sd_ack,
+      sd_buff_addr => fdc_buff_addr, sd_buff_dout => fdc_buff_dout, sd_buff_din => fdc_buff_din,
+      sd_buff_wr => fdc_buff_wr
+    );
+
+  -- wait states: a data register access (F3) holds the CPU until DRQ or INTRQ when F4 bit 6 is set.
+  -- A 100 ms timeout releases a stuck CPU.
+  waiting <= '1' when f4(6)='1' and f3sel='1' and (ior='0' or iow='0') and fdc_drq='0' and fdc_intrq='0' else '0';
+  cpuwait <= '0' when waiting='1' and wait_cnt(21)='0' else '1';
 
   -- IM 1 timer interrupt and NMI: masked latches, active low
   cpuint <= '0' when (intstat and intmask) /= x"00" else '1';
@@ -216,7 +272,7 @@ begin
 	   RESET_n => autores, --swres,
 		CLK     => clk42m, 
 		CEN     => cpuClkEn and not dn_go, -- 2.0 MHz
-		WAIT_n  => '1',
+		WAIT_n  => cpuwait,
 		INT_n   => cpuint,
 		NMI_n   => cpunmi,
 		BUSRQ_n => '1',
@@ -241,10 +297,9 @@ begin
 			  vramdo when vramsel='1' else
 			  kbdout when kbdsel='1' else
 			  x"30" when ior='0' and cpua(7 downto 0)=x"fd" else -- printer io read
-			  -- no disk controller yet (phase 3): F0-F7 read 00. With FF the ROM
-			  -- sees Track 0 after its Restore and waits forever for a boot sector;
-			  -- a CP-300 without the disk unit times out and goes to "Cass?".
-			  x"00" when ior='0' and cpua(7 downto 3)="11110" else
+			  -- WD1793 at F0-F3; F4-F7 read FF. Without a disk the status reads NOT READY
+			  -- and the ROM falls through to "Cass?".
+			  fdc_dout when ior='0' and fdcsel='1' else
 				  -- Model III: E0 interrupt status (active low), E4 NMI status (bit 7 INTRQ,
 				  -- bit 6 motor timeout, active low), FF bit 7 cassette input
 				  not (intstat and intmask) when ior='0' and e0sel='1' else
@@ -414,12 +469,18 @@ begin
    if rising_edge(clk42m) then
      if dn_go='1' or autores='0' then
        tapebits <= "000";
+       f4 <= (others => '0');
        ec <= (others => '0');
        intmask <= (others => '0');
        intstat <= (others => '0');
        nmimask <= (others => '0');
        rtc_cnt <= 0;
      else
+       if waiting = '1' then
+         if wait_cnt(21) = '0' then wait_cnt <= wait_cnt + 1; end if;
+       else
+         wait_cnt <= (others => '0');
+       end if;
        -- 30 Hz real-time clock
        if rtc_cnt = 1399999 then
          rtc_cnt <= 0;
@@ -433,6 +494,7 @@ begin
            if e0sel='1' then intmask <= cpudo; end if;
            if e4sel='1' then nmimask <= cpudo; end if;
            if ecsel='1' then ec <= cpudo; end if;
+           if cpua(7 downto 0)=x"f4" then f4 <= cpudo; end if;
          end if;
          -- reading EC acknowledges the RTC interrupt
          if ior='0' and ecsel='1' then intstat(2) <= '0'; end if;

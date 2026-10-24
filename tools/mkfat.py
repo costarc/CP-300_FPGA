@@ -13,14 +13,94 @@ import os
 import struct
 
 
+def z80_asm(items, org):
+    """Tiny assembler for the boot sector: items are bytes, ("label", name), or
+    (opcode_bytes, kind, name) with kind "rel" (JR/DJNZ) or "abs" (16-bit address)."""
+    labels, pos = {}, org
+    for it in items:
+        if isinstance(it, bytes):
+            pos += len(it)
+        elif it[0] == "label":
+            labels[it[1]] = pos
+        else:
+            pos += len(it[0]) + (1 if it[1] == "rel" else 2)
+    out, pos = bytearray(), org
+    for it in items:
+        if isinstance(it, bytes):
+            out += it
+            pos += len(it)
+        elif it[0] == "label":
+            continue
+        else:
+            op, kind, name = it
+            pos += len(op) + (1 if kind == "rel" else 2)
+            out += op
+            if kind == "rel":
+                d = labels[name] - pos
+                assert -128 <= d < 128, name
+                out.append(d & 255)
+            else:
+                out += struct.pack("<H", labels[name])
+    return bytes(out), labels
+
+
+def boot_disk():
+    """Raw 40 track x 18 x 256 disk. The boot sector prints "BOOT OK" on the first screen line,
+    then tests the controller: SEEK track 5, READ sector 3 (checks the data), WRITE it back
+    changed, READ again and compare. It prints "FDC OK " or "FDC BAD" on the second line.
+    Track 5 sector 3 holds byte i = i ^ 5A."""
+    I = lambda *b: bytes(b)
+    prog = [
+        (I(0x21), "abs", "msg_boot"), I(0x11, 0x00, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
+        I(0x3E, 0x81, 0xD3, 0xF4),                       # drive 0
+        I(0x3E, 0x05, 0xD3, 0xF3, 0x3E, 0x10, 0xD3, 0xF0),   # SEEK 5
+        (I(0xCD), "abs", "wbusy"),
+        I(0x3E, 0x03, 0xD3, 0xF2, 0x3E, 0x80, 0xD3, 0xF0),   # READ sector 3
+        I(0x21, 0x00, 0x44), (I(0xCD), "abs", "rdsec"),
+        I(0x3A, 0x00, 0x44, 0xFE, 0x5A), (I(0x20), "rel", "bad"),
+        I(0x3A, 0xFF, 0x44, 0xFE, 0xA5), (I(0x20), "rel", "bad"),
+        I(0x3E, 0x77, 0x32, 0x00, 0x44),                 # change byte 0
+        I(0x3E, 0x03, 0xD3, 0xF2, 0x3E, 0xA0, 0xD3, 0xF0),   # WRITE sector 3
+        I(0x21, 0x00, 0x44), (I(0xCD), "abs", "wrsec"),
+        I(0x3E, 0x03, 0xD3, 0xF2, 0x3E, 0x80, 0xD3, 0xF0),   # READ it back
+        I(0x21, 0x00, 0x45), (I(0xCD), "abs", "rdsec"),
+        I(0x3A, 0x00, 0x45, 0xFE, 0x77), (I(0x20), "rel", "bad"),
+        I(0x3A, 0x01, 0x45, 0xFE, 0x5B), (I(0x20), "rel", "bad"),
+        (I(0x21), "abs", "msg_ok"), (I(0x18), "rel", "print"),
+        ("label", "bad"), (I(0x21), "abs", "msg_bad"),
+        ("label", "print"), I(0x11, 0x40, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
+        ("label", "halt"), (I(0x18), "rel", "halt"),
+        ("label", "wbusy"), I(0xDB, 0xF0, 0xCB, 0x47), (I(0x20), "rel", "wbusy"), I(0xC9),
+        ("label", "rdsec"), I(0xDB, 0xF0, 0xCB, 0x4F), (I(0x28), "rel", "rdn"),
+        I(0xDB, 0xF3, 0x77, 0x23), (I(0x18), "rel", "rdsec"),
+        ("label", "rdn"), I(0xCB, 0x47), (I(0x20), "rel", "rdsec"), I(0xC9),
+        ("label", "wrsec"), I(0xDB, 0xF0, 0xCB, 0x4F), (I(0x28), "rel", "wrn"),
+        I(0x7E, 0xD3, 0xF3, 0x23), (I(0x18), "rel", "wrsec"),
+        ("label", "wrn"), I(0xCB, 0x47), (I(0x20), "rel", "wrsec"), I(0xC9),
+        ("label", "msg_boot"), b"BOOT OK",
+        ("label", "msg_ok"), b"FDC OK ",
+        ("label", "msg_bad"), b"FDC BAD",
+    ]
+    code, _ = z80_asm(prog, 0x4300)
+    assert len(code) <= 256
+    disk = bytearray(40 * 18 * 256)
+    disk[0:len(code)] = code
+    o = (5 * 18 + 2) * 256
+    for i in range(256):
+        disk[o + i] = i ^ 0x5A
+    return bytes(disk)
+
+
 def test_files():
     def gen(n, salt):
         return bytes((i * 7 + salt) & 255 for i in range(n))
+    cfg = (b"C3" + b"BOOT    DSK" + b" " * 44).ljust(512, b"\0")
     return {
+        "BOOT.DSK": boot_disk(),
         "TRSDOS13.DSK": gen(40 * 18 * 256, 1),
         "LDOS.DSK": gen(40 * 18 * 256 + 512, 2),
         "GAME.CAS": gen(5000, 3),
-        "CP300.CFG": bytes(512),
+        "CP300.CFG": cfg,
     }
 
 
