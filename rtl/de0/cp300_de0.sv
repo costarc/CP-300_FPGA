@@ -2,17 +2,18 @@
 //
 //  CP-300 FPGA - top level for the Terasic DE0 (Cyclone III EP3C16)
 //
-//  Phase 1: the HT1080Z (TRS-80 Model I) core from mist-devel/ht1080z,
-//  running stand-alone on the DE0 without the MiST ARM controller:
+//  The HT1080Z (TRS-80 Model I) core from mist-devel/ht1080z, being turned
+//  into a CP-300 (Model III compatible), running
+//  stand-alone on the DE0 without the MiST ARM controller:
 //    - 50 MHz -> 42 MHz PLL
-//    - ROM held in M9K and copied to SDRAM at power-up (rom_loader)
+//    - CP-300 ROM: four 2732 EPROM images + 2716 character generator in M9K
 //    - PS/2 keyboard straight from the DE0 PS/2 port
 //    - MiST scandoubler for 31 kHz VGA on the 4-bit DE0 DAC (OSD unused)
 //
 //  Switches:  SW0 up = 50 Hz (down = 60 Hz, as the PAL-M CP-300)
 //             SW1 = CPU turbo, SW3:2 = scanlines, SW4 = tape sounds
 //  Buttons:   BUTTON0 = reset
-//  LEDs:      LEDG0 = ROM loaded, LEDG9 = PLL locked
+//  LEDs:      LEDG0 = running (out of reset), LEDG9 = PLL locked
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -57,8 +58,6 @@ module cp300_de0 (
 	input         CASS_IN     // GPIO0_D[1]: reserved, the HT1080Z ROM loads tapes via port 04
 );
 
-parameter ROM_FILE = "../../roms/boot.hex";
-
 wire clk42, clk42_sdram, pll_locked;
 pll_de0 pll(
 	.inclk0(CLOCK_50),
@@ -74,26 +73,20 @@ wire        turbo    = SW[1];
 wire  [1:0] scanlines = SW[3:2];
 wire        tapesnd  = SW[4];
 
-// ROM download into SDRAM (replaces MiST data_io)
-wire        dn_go, dn_wr, rom_loaded;
-wire [24:0] dn_addr;
-wire  [7:0] dn_data;
-
-rom_loader #(.ROM_FILE(ROM_FILE)) rom_loader(
-	.clk(clk42),
-	.pll_locked(pll_locked),
-	.dn_go(dn_go),
-	.dn_wr(dn_wr),
-	.dn_addr(dn_addr),
-	.dn_data(dn_data),
-	.loaded(rom_loaded)
-);
+// Power-on reset: hold the CPU about 1.5 ms after the PLL locks so the
+// SDRAM controller finishes its init sequence before the first RAM access.
+reg [15:0] por_cnt = 0;
+wire       por_done = &por_cnt;
+always @(posedge clk42) begin
+	if (!pll_locked)    por_cnt <= 0;
+	else if (!por_done) por_cnt <= por_cnt + 1'd1;
+end
 
 reg reset = 1;
 reg [1:0] button_s;
 always @(posedge clk42) begin
 	button_s <= {button_s[0], BUTTON[0]};
-	reset <= ~button_s[1] | ~rom_loaded;
+	reset <= ~button_s[1] | ~por_done;
 end
 
 wire [17:0] rgb;
@@ -131,10 +124,10 @@ ht1080z ht1080z (
 
 	.audiomix(audio),
 
-	.dn_go(dn_go),
-	.dn_wr(dn_wr),
-	.dn_addr(dn_addr),
-	.dn_data(dn_data),
+	.dn_go(1'b0),
+	.dn_wr(1'b0),
+	.dn_addr(25'd0),
+	.dn_data(8'd0),
 	.dn_idx(5'd0),
 
 	.exp_addr(exp_addr),
@@ -215,6 +208,6 @@ dac #(.C_bits(15)) dac(
 );
 
 
-assign LEDG = {pll_locked, 8'd0, rom_loaded};
+assign LEDG = {pll_locked, 8'd0, ~reset};
 
 endmodule

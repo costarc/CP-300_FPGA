@@ -15,7 +15,8 @@ set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
 
 # Sources
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/de0/cp300_de0.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/de0/rom_loader.sv
+set_global_assignment -name VHDL_FILE ../../roms/cp300_roms_pkg.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/de0/pll_de0.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ht1080z.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/videoctrl.vhd

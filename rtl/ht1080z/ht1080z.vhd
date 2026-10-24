@@ -43,6 +43,10 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
 use IEEE.STD_LOGIC_UNSIGNED.ALL;
 use IEEE.NUMERIC_STD.ALL;
+-- synthesis translate_off
+use std.textio.all;
+use work.sim_trace_cfg.all;
+-- synthesis translate_on
 
 entity ht1080z is
     Port ( clk42m : in  STD_LOGIC;
@@ -141,7 +145,7 @@ signal romrd,ramrd,ramwr,vramsel,kbdsel : std_logic;
 signal ior,iow,memr,memw : std_logic;
 signal vdata : std_logic_vector(7 downto 0);
 
-signal clk42div : std_logic_vector(4 downto 0);
+signal clk42div : std_logic_vector(4 downto 0) := (others => '0');
 
 signal dacout : std_logic;
 signal sndBC1,sndBDIR,sndCLK : std_logic;
@@ -178,7 +182,8 @@ begin
   memr <= cpurd or cpumreq;
   memw <= cpuwr or cpumreq;
   
-  romrd <= '1' when memr='0' and cpua<x"3780" else '0';
+  -- CP-300 decoder CI-44: ROM 0000-37FF, keyboard 3800, video RAM 3C00
+  romrd <= '1' when memr='0' and cpua<x"3800" else '0';
   ramrd <= '1' when cpua(15 downto 14)/="00" and memr='0' else '0';
   ramwr <= '1' when cpua(15 downto 14)/="00" and memw='0' else '0';
   vramsel <= '1' when cpua(15 downto 10)="001111" and cpumreq='0' else '0';
@@ -215,15 +220,28 @@ begin
   cpudi <= --romdo when romrd='1' else
 	        --ramdo when ramrd='1' else
            exp_din when exp_oe = '1' else
-			  ram_dout when romrd='1' else
+			  romdo when romrd='1' else
 			  ram_dout when ramrd='1' else
 			  vramdo when vramsel='1' else
 			  kbdout when kbdsel='1' else
 			  x"30" when ior='0' and cpua(7 downto 0)=x"fd" else -- printer io read
+			  -- no disk controller yet (phase 3): F0-F7 read 00. With FF the ROM
+			  -- sees Track 0 after its Restore and waits forever for a boot sector;
+			  -- a CP-300 without the disk unit times out and goes to "Cass?".
+			  x"00" when ior='0' and cpua(7 downto 3)="11110" else
 			  ram_dout when iorrd='1' else
 			  x"ff";
 
-  vdata <= cpudo when cpudo>x"1f" else cpudo or x"40";
+  -- the CP-300 character generator has its own glyphs for 00-1F
+  vdata <= cpudo;
+
+  rom : entity work.cp300_rom
+    port map (
+      clk  => clk42m,
+      a    => cpua(13 downto 0),
+      dout => romdo
+    );
+
   -- video ram at 0x3C00
   video : entity work.videoctrl 
     port map (   
@@ -431,4 +449,39 @@ begin
  end process;
 
  
+-- synthesis translate_off
+-- Simulation only: log opcode fetches and memory writes to trace.txt
+-- between TRACE_FROM and TRACE_TO (sim/run.sh generates sim_trace_cfg).
+process(clk42m)
+  file f : text;
+  variable l : line;
+  variable opened : boolean := false;
+  variable fetch, wrcyc, fetch_old, wrcyc_old : boolean := false;
+  variable op : std_logic_vector(7 downto 0);
+  variable pc : std_logic_vector(15 downto 0);
+begin
+  if rising_edge(clk42m) and now >= TRACE_FROM and now < TRACE_TO then
+    if not opened then
+      file_open(f, "trace.txt", write_mode);
+      opened := true;
+    end if;
+    fetch := cpum1 = '0' and cpumreq = '0' and cpurd = '0';
+    wrcyc := cpumreq = '0' and cpuwr = '0';
+    if fetch then
+      pc := cpua; op := cpudi;
+    end if;
+    if fetch_old and not fetch then
+      write(l, string'("PC ")); hwrite(l, pc); write(l, string'(" ")); hwrite(l, op);
+      writeline(f, l);
+    end if;
+    if wrcyc and not wrcyc_old then
+      write(l, string'("WR ")); hwrite(l, cpua); write(l, string'(" ")); hwrite(l, cpudo);
+      writeline(f, l);
+    end if;
+    fetch_old := fetch;
+    wrcyc_old := wrcyc;
+  end if;
+end process;
+-- synthesis translate_on
+
 end Behavioral;

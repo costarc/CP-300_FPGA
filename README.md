@@ -15,7 +15,8 @@ There was no existing Model III or CP-300 core, so this starts from the HT1080Z 
 | Phase | Work | Status |
 |---|---|---|
 | 1 | HT1080Z (Model I) running stand-alone on the DE0 | Compiles, not tested on hardware |
-| 2 | Model III / CP-300 conversion (memory map, ports, interrupts, ROM, 2.0 MHz) | Not started |
+| 2a | CP-300 ROMs: four 2732 EPROMs + character generator, CP-300 video | Done in HDL; boot blocked by bad dumps of 900-61/62 (see roms/README.md) |
+| 2 | Model III / CP-300 I/O (ports E0/E4/EC, 30 Hz interrupt, 2.0 MHz) | Not started |
 | 3 | Floppy controller (WD1793, ports F0-F4) with disk images on SD | Not started |
 | 4 | Hard disk (WD1010, ports C8-CF, FreHD-compatible drivers) on SD | Not started |
 | 5 | Original CP-300 keyboard on GPIO, merged with PS/2 | Not started |
@@ -23,29 +24,43 @@ There was no existing Model III or CP-300 core, so this starts from the HT1080Z 
 ## Layout
 
 ```
-rtl/de0/         DE0 top level, 50->42 MHz PLL, ROM loader
+rtl/de0/         DE0 top level, 50->42 MHz PLL
+rtl/cp300/       CP-300 specific blocks (system ROM: four 2732 EPROMs)
 rtl/ht1080z/     core files vendored from mist-devel/ht1080z @ ba57e3c (modified here)
 rtl/T80/         submodule: mist-devel/T80 (Z80 core)
 rtl/mist-modules submodule: mist-devel/mist-modules (scandoubler / video only)
 syn/de0/         Quartus II 13.0sp1 project
-roms/            ROM images (not committed) and boot.hex
-tools/           rom2hex.py
+sim/             GHDL boot simulation
+roms/            CP-300 ROM dumps (not committed)
+tools/           mkroms.py
 docs/            design notes
 ```
 
-Changes to vendored files: `rtl/ht1080z/sdram.v` maps rows/columns for the DE0's 4096 x 256 SDRAM (MiST has 512 columns).
+Changes to vendored files:
+
+- `sdram.v`: rows/columns for the DE0's 4096 x 256 SDRAM (MiST has 512 columns).
+- `ht1080z.vhd`: system ROM read from the four on-chip EPROM images at 0000-37FF (CP-300 decoder CI-44) instead of SDRAM; video RAM codes 00-1F stored as written.
+- `videoctrl.vhd`: CP-300 character generator (900-65), 8-dot cells, 512 active pixels, 2x3 graphic blocks generated in logic.
 
 ## Build
 
+The ROM dumps from a CP-300 board (see [roms/README.md](roms/README.md)) go in `roms/`, then:
+
 ```
 git clone --recurse-submodules <this repo>
-python tools/rom2hex.py [image.rom]
+python tools/mkroms.py
 quartus_sh --flow compile syn/de0/cp300_de0
 ```
 
 Program `syn/de0/output_files/cp300_de0.sof` with the Quartus programmer (USB-Blaster on the DE0).
 
-## DE0 controls (phase 1)
+Boot simulation (GHDL 6, prints the screen of the last frame):
+
+```
+sh sim/run.sh 1500ms
+```
+
+## DE0 controls
 
 | Control | Function |
 |---|---|
@@ -54,7 +69,7 @@ Program `syn/de0/output_files/cp300_de0.sof` with the Quartus programmer (USB-Bl
 | SW1 | CPU turbo |
 | SW3:2 | Scanlines |
 | SW4 | Tape sounds |
-| LEDG0 / LEDG9 | ROM loaded / PLL locked |
+| LEDG0 / LEDG9 | CPU running (out of reset) / PLL locked |
 | VGA | 31 kHz through the MiST scandoubler |
 | PS/2 | Keyboard |
 | RS-232 | TRS-80 RS-232 at ports E8-EA, 9600 8N1 |

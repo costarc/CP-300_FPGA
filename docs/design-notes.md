@@ -38,10 +38,25 @@ Reference: TRS-80 Model III Technical Reference Manual; xtrs / sdltrs source.
 | Printer | 37E8 | Port F8 |
 | Cassette | Port FF, 500 baud | Port FF, 500/1500 baud (1500 uses edge interrupts) |
 
-CP-300 specifics to confirm on a real machine:
+### CP-300 ROMs (done)
 
-- Dump the system ROM and the character generator ROM (Portuguese characters, if any).
-- "64 KB RAM, 16 KB ROM" in the specs: probably 14 KB system ROM + 2 KB character generator, and 16 KB of RAM under the ROM used by CP/M (SO-08). Not confirmed.
+From the board schematic ("Esquema elétrico da placa Prológica 10", rev 2.3) and the dumps of the user's board:
+
+- The board predates revision 2.3 (25-11-83, "eliminado CI's 29-30-31"), so the system ROM is four 2732 EPROMs, CI-28..31: 900-61 (0000), 900-62 (1000), 900-63 (2000), 900-64 (3000). Later boards use one 27128. The contents are a TRS-80 Model III ROM (starts F3 AF C3 15 30).
+- Decoder CI-44 (74139): the 2Y outputs pick the EPROM with A13:A12. 2Y3 enables the second half, whose outputs are ROM (3000-37FF), keyboard 3800 ("TECLADO") and video RAM 3C00. So only the lower 2 KB of 900-64 is reachable (3000-37FF).
+- Port F0-F7 (floppy controller) read 00 until the FDC exists. The ROM sends Restore and waits for the Track-0 status bit with a 64K-loop timeout (about 2.7 s at 1.77 MHz), then prints "Cass?". With FF it sees Track 0 at once and waits forever for a boot sector. A CP-300 without the SM-300 disk unit reaches "Cass?", so its F0 must read with bit 2 clear.
+- This ROM is Prológica's: "PROLOGICA 1981 BASIC", "Mem. usada", and "Cass?" takes A/B (not L/H).
+
+### Boot simulation
+
+`sim/run.sh` (GHDL) runs the core with the ROMs and prints the screen; `TRACE_FROM_MS` / `TRACE_MS` log every opcode fetch and memory write to `sim/out/trace.txt`. With the current dumps the ROM initialises the Model III I/O, times out on the disk check, and at 1.39 s (turbo) goes to the "Cass?" path. There it executes RST 18 → 4006 → JP 1C90, but 1C90 holds a copy of 1490 (floating-point constants) because 900-62 was dumped with A11 stuck. The CPU then runs data and the stack overwrites video RAM. 900-61 has the same problem. Re-dump both as 2732s.
+- In the FPGA (`rtl/cp300/cp300_rom.vhd`) each EPROM is its own M9K ROM, selected the same way. The CPU reads them directly; MiST's ROM download into SDRAM is gone.
+- Character generator CI-59 (2716, 900-65): A0-A2 = scan line, A3-A10 = character code. Its outputs load the 74166 shift register CI-57 (bit 7 first), so cells are 8 dots wide: 64 x 8 = 512 dots per line. Glyphs use scan lines 0-7 of the 12-line row. 80-BF come from the graphics mux CI-58 as 2x3 blocks of 4 dots x 4 lines.
+- Codes C0-FF: the ROM holds special symbols at 80-BF and katakana at C0-FF. On the Model III the choice is made through port EC. Until that port exists, C0-FF show the special symbols.
+
+Still to confirm:
+
+- "64 KB RAM, 16 KB ROM" in the specs: 14 KB system ROM + 2 KB character generator matches; 16 KB of RAM under the ROM for CP/M (SO-08) is not confirmed.
 - The expansion connector: Prológica removed the parallel, serial and disk circuits but kept the signals (Fabio Belavenuto's analysis in the cp-500 Google group).
 
 ## Phases 3-4: storage on SD

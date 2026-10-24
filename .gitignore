@@ -20,7 +20,10 @@ roms/*.rom
 roms/*.ROM
 roms/*.bin
 roms/*.BIN
-roms/boot.hex
+roms/cp300_roms_pkg.vhd
 
 # upstream reference checkout
 upstream_ht1080z/
+
+# GHDL simulation output
+sim/out/
