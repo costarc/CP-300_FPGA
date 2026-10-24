@@ -170,6 +170,7 @@ static uint8_t key_get(void)
 
 	while (KBD_STAT & 1) {
 		b = KBD_DATA;
+		DBG = b;                 /* last raw PS/2 byte on the LEDs */
 		if (b == 0xE0) { key_ext = 1; continue; }
 		if (b == 0xF0) { key_brk = 1; continue; }
 		k = 0;
@@ -505,7 +506,10 @@ void main(void)
 {
 	uint8_t k;
 
+	DBG = 0x01;
 	card_start();
+	/* LEDs: b0 card ok, b1 /CP300 found, b2 CP300.CFG found, b7:3 error code */
+	DBG = sd_ok | (have_dir << 1) | (cfg_ok << 2) | (sd_err << 3);
 	CTRL = 0;                /* release the CP-300, it has been held in reset since power-on */
 	for (;;) {
 		fdc_service();

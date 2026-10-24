@@ -92,6 +92,7 @@ reg reset = 1;
 reg io_reset = 1;
 reg [1:0] button_s;
 wire core_rst, menu_open;
+wire [7:0] io_dbg;
 always @(posedge clk42) begin
 	button_s <= {button_s[0], BUTTON[0]};
 	io_reset <= ~button_s[1] | ~por_done;
@@ -221,6 +222,7 @@ io_ctrl io_ctrl (
 	.ps2dat(PS2_KBDAT),
 	.menu_open(menu_open),
 	.core_rst(core_rst),
+	.dbg(io_dbg),
 	.fdc_rd(fdc_rd),
 	.fdc_wr(fdc_wr),
 	.fdc_lba(fdc_lba),
@@ -275,6 +277,6 @@ dac #(.C_bits(15)) dac(
 );
 
 
-assign LEDG = {pll_locked, 8'd0, ~reset};
+assign LEDG = {pll_locked, io_dbg, ~reset};   // LEDG8:1 = IO controller status, then the last PS/2 byte
 
 endmodule

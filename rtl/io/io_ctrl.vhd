@@ -50,6 +50,7 @@ entity io_ctrl is
 
     menu_open : out std_logic;
     core_rst  : out std_logic;
+    dbg       : out std_logic_vector(7 downto 0);   -- port 08, shown on the green LEDs
 
     -- floppy controller sector service
     fdc_rd      : in  std_logic;
@@ -108,6 +109,7 @@ architecture rtl of io_ctrl is
   signal fifo_wp, fifo_rp : unsigned(3 downto 0) := (others => '0');
   signal fifo_do : std_logic_vector(7 downto 0);
 
+  signal dbg_r   : std_logic_vector(7 downto 0) := (others => '0');
   signal ctl4    : std_logic_vector(1 downto 0) := (others => '0');
 
   -- character generator
@@ -335,6 +337,13 @@ begin
       end if;
     end if;
   end process;
+  process(clk)
+  begin
+    if rising_edge(clk) then
+      if cen = '1' and iowr = '1' and port_a = x"08" then dbg_r <= cpu_do; end if;
+    end if;
+  end process;
+  dbg <= dbg_r;
   menu_open <= ctl4(0);
   core_rst  <= ctl4(1);
 
