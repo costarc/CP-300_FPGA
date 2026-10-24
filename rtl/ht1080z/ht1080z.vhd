@@ -299,6 +299,10 @@ begin
 			  x"30" when ior='0' and cpua(7 downto 0)=x"fd" else -- printer io read
 			  -- WD1793 at F0-F3; F4-F7 read FF. Without a disk the status reads NOT READY
 			  -- and the ROM falls through to "Cass?".
+			  -- An empty drive 0 answers like a missing controller (status 00, no Track 0): the ROM then
+			  -- goes to "Cass?" instead of printing "Diskette?" forever. Mount a disk and use the
+			  -- menu's reset to boot it.
+			  x"00" when ior='0' and cpua(7 downto 0)=x"f0" and fdc_drv="00" and fdc_rdy='0' else
 			  fdc_dout when ior='0' and fdcsel='1' else
 				  -- Model III: E0 interrupt status (active low), E4 NMI status (bit 7 INTRQ,
 				  -- bit 6 motor timeout, active low), FF bit 7 cassette input
