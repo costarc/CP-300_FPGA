@@ -230,7 +230,8 @@ begin
         else
           idx_cnt <= 0;
         end if;
-        if idx_cnt < 100 then s_index <= '1'; else s_index <= '0'; end if;
+        -- no index pulses without a disk turning (the ROM relies on that to give up and ask "Cass?")
+        if ready = '1' and idx_cnt < 100 then s_index <= '1'; else s_index <= '0'; end if;
       end if;
     end if;
   end process;
