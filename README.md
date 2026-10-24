@@ -15,7 +15,7 @@ There was no existing Model III or CP-300 core, so this starts from the HT1080Z 
 | Phase | Work | Status |
 |---|---|---|
 | 1 | HT1080Z (Model I) running stand-alone on the DE0 | Compiles, not tested on hardware |
-| 2a | CP-300 ROMs: four 2732 EPROMs + character generator, CP-300 video | Done in HDL; boot blocked by bad dumps of 900-61/62 (see roms/README.md) |
+| 2a | CP-300 ROMs: four 2732 EPROMs + character generator, CP-300 video | Done; boots to "Cass?" in simulation, not tested on hardware |
 | 2 | Model III / CP-300 I/O (ports E0/E4/EC, 30 Hz interrupt, 2.0 MHz) | Not started |
 | 3 | Floppy controller (WD1793, ports F0-F4) with disk images on SD | Not started |
 | 4 | Hard disk (WD1010, ports C8-CF, FreHD-compatible drivers) on SD | Not started |

@@ -12,9 +12,19 @@ ROM images are copyrighted and are not part of this repository. Put the dumps fr
 
 These are the boards before schematic revision 2.3 (25-11-83, "eliminado CI's 29-30-31"), which replaced the four EPROMs with one 27128.
 
-Read each EPROM as a 2732 (4 KB, A11 driven). `mkroms.py` warns when a 900-61..63 image has two identical 2 KB halves, the sign of a 2732 read as a 2716. Only 900-64 may look like that, since its upper half (3800-3FFF) is never selected.
+Read each EPROM as a 2732 (4 KB, A11 driven). `mkroms.py` warns when a 900-61..63 image has two identical 2 KB halves, the sign of a 2732 read as a 2716.
 
-**Known issue (October 2026):** the current 900-61 and 900-62 dumps have identical halves, so 0800-0FFF and 1800-1FFF are missing (for example the DE/HL compare routine at 1C90 that RST 18 jumps to). The boot simulation crashes there. Re-dump both chips.
+The older archive `cp-300_roms_4x2732_gc.zip` holds only the first 2 KB of each 2732, stored twice (read as 2716s): 0800-0FFF, 1800-1FFF and 2800-2FFF are missing, and its 900-63 lower half has bit 7 dropped in 164 bytes. The complete set `cp-300_roms_4x2732_full.zip` was cut in 4 KB pieces from `27C128cp300.BIN`, a 16 KB dump of the same ROM from a later single-EPROM board. Every byte the old dumps do have matches it.
+
+| File | MD5 |
+|---|---|
+| `900-61.BIN` | fcba30c4749e693a1cfa2c6acfd5bfa4 |
+| `900-62.BIN` | 0b68f7d7069a6e85aba5f9db70088144 |
+| `900-63.BIN` | cb6487d9eb4d40c05ba04840cf9881d6 |
+| `900-64.BIN` | 733031292423cf327cf719f696255715 |
+| `900-65.BIN` | 8ccef559eaa98ba050f42f838d292ce2 |
+
+900-64's upper half (3800-3FFF of the chip) holds "MONITOR VERSAO 1.1 1982 PROLOGICA". The CPU cannot select it at 3800 (keyboard); how the CP-300 reaches it is still open.
 
 Then run:
 
