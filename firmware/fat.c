@@ -169,7 +169,7 @@ uint8_t dir_next(dir_t *d, dirent_t *e)
 			return 0;
 		if (p[0] == 0xE5 || p[11] == 0x0F || (p[11] & 0x08))
 			continue;
-		/* pointer copy: SDCC 4.0.0 adds the wrong register for e->name[k] = p[k] */
+		/* pointer copy (SDCC 4.0 miscompiled e->name[k] = p[k]; kept, it is as cheap) */
 		dst = e->name;
 		for (k = 0; k < 11; k++)
 			*dst++ = p[k];
