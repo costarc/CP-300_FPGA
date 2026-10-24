@@ -18,6 +18,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/de0/cp300_de0.sv
 set_global_assignment -name VHDL_FILE ../../roms/cp300_roms_pkg.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/de0/pll_de0.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/io/io_fw_pkg.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/io/io_ctrl.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ht1080z.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/videoctrl.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ps2kbd.vhd
@@ -47,6 +49,16 @@ set_location_assignment PIN_A7 -to DRAM_ADDR[11]
 set_location_assignment PIN_A8 -to DRAM_DQ[8]
 set_location_assignment PIN_A9 -to DRAM_DQ[10]
 set_location_assignment PIN_AA16 -to CASS_IN
+set_location_assignment PIN_Y21 -to SD_CLK
+set_location_assignment PIN_Y22 -to SD_CMD
+set_location_assignment PIN_AA22 -to SD_DAT
+set_location_assignment PIN_W21 -to SD_DAT3
+set_location_assignment PIN_W20 -to SD_WP_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_CLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_CMD
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_DAT
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_DAT3
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_WP_N
 set_location_assignment PIN_AB16 -to AUDIO_OUT
 set_location_assignment PIN_B1 -to LEDG[9]
 set_location_assignment PIN_B10 -to DRAM_DQ[12]

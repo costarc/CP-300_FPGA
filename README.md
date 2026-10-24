@@ -63,6 +63,21 @@ Boot simulation (GHDL 6, prints the screen of the last frame):
 sh sim/run.sh 1500ms
 ```
 
+## SD card and on-screen menu (IO controller)
+
+A second Z80 inside the FPGA (`rtl/io/io_ctrl.vhd`, firmware in `firmware/`) reads the SD
+card, draws the menu through the MiST OSD and reads the PS/2 keyboard while the menu is open.
+Format the card FAT16 or FAT32 and create `/CP300` with the `*.DSK` and `*.CAS` files.
+Optionally put a 512-byte `CP300.CFG` there; the selected files are saved in it.
+
+- **F12** opens or closes the menu; Up/Down, Enter, Esc, PgUp/PgDn move around. The CP-300
+  does not see the keys while the menu is open.
+- The menu lists Drive 0-3, the cassette file and a CP-300 reset. Choosing a file only records
+  the selection for now: the floppy controller (port F0-F7) and cassette player are the next steps.
+- Firmware: `firmware/build.sh` (SDCC 4.6.0) rebuilds `rtl/io/io_fw_pkg.vhd`; commit both.
+- Tests: `firmware/tests/host_fat.c` (FAT code on the PC against `tools/mkfat.py` images) and
+  `sim/run_io.sh` (the real firmware in GHDL with an SD card model, writes `sim/out/osd_*.pbm`).
+
 ## DE0 controls
 
 | Control | Function |

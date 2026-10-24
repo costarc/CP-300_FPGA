@@ -38,6 +38,12 @@ module cp300_de0 (
 	input         PS2_KBCLK,
 	input         PS2_KBDAT,
 
+	output        SD_CLK,
+	output        SD_CMD,     // MOSI in SPI mode
+	input         SD_DAT,     // DAT0 = MISO
+	output        SD_DAT3,    // CS
+	input         SD_WP_N,
+
 	output [12:0] DRAM_ADDR,
 	inout  [15:0] DRAM_DQ,
 	output        DRAM_LDQM,
@@ -83,10 +89,13 @@ always @(posedge clk42) begin
 end
 
 reg reset = 1;
+reg io_reset = 1;
 reg [1:0] button_s;
+wire core_rst, menu_open;
 always @(posedge clk42) begin
 	button_s <= {button_s[0], BUTTON[0]};
-	reset <= ~button_s[1] | ~por_done;
+	io_reset <= ~button_s[1] | ~por_done;
+	reset <= ~button_s[1] | ~por_done | core_rst;
 end
 
 wire [17:0] rgb;
@@ -115,8 +124,8 @@ ht1080z ht1080z (
 	.cass_in(cass_in[1]),
 	.cass_out(cass_out),
 
-	.ps2clk(PS2_KBCLK),
-	.ps2dat(PS2_KBDAT),
+	.ps2clk(PS2_KBCLK | menu_open),   // the menu owns the keyboard while it is open
+	.ps2dat(PS2_KBDAT | menu_open),
 
 	.ht_rgb(rgb),
 	.hs(hs),
@@ -175,11 +184,32 @@ trs80_rs232 rs232 (
 
 assign UART_TXD = uart_tx;
 
+// IO controller: SD card, on-screen menu, menu keyboard
+wire spi_sck, spi_mosi, osd_ss3, sd_cs_n;
+io_ctrl io_ctrl (
+	.clk(clk42),
+	.reset(io_reset),
+	.sd_cs_n(sd_cs_n),
+	.spi_sck(spi_sck),
+	.spi_mosi(spi_mosi),
+	.sd_miso(SD_DAT),
+	.sd_wp_n(SD_WP_N),
+	.osd_ss3(osd_ss3),
+	.ps2clk(PS2_KBCLK),
+	.ps2dat(PS2_KBDAT),
+	.menu_open(menu_open),
+	.core_rst(core_rst)
+);
+
+assign SD_CLK  = spi_sck;
+assign SD_CMD  = spi_mosi;
+assign SD_DAT3 = sd_cs_n;
+
 mist_video #(.COLOR_DEPTH(6), .SD_HCNT_WIDTH(10), .OUT_COLOR_DEPTH(4), .USE_BLANKS(1'b1)) mist_video(
 	.clk_sys        ( clk42            ),
-	.SPI_SCK        ( 1'b0             ),
-	.SPI_SS3        ( 1'b1             ),
-	.SPI_DI         ( 1'b0             ),
+	.SPI_SCK        ( spi_sck          ),
+	.SPI_SS3        ( osd_ss3          ),
+	.SPI_DI         ( spi_mosi         ),
 	.R              ( rgb[ 5: 0]       ),
 	.G              ( rgb[11: 6]       ),
 	.B              ( rgb[17:12]       ),

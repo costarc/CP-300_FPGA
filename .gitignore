@@ -27,3 +27,5 @@ upstream_ht1080z/
 
 # GHDL simulation output
 sim/out/
+firmware/out/
+syn/de0/q.log
