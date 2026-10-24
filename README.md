@@ -85,7 +85,11 @@ The IO controller serves 512-byte blocks of the disk image from the SD card.
 
 - Disk images are raw: 18 sectors x 256 bytes per track, tracks in order; a file larger than
   80 x 18 x 256 bytes is double sided with side 1 following side 0 on every track. A file
-  with the read-only attribute is write protected. `tools/dsk2raw.py` (JV3/DMK) is not written yet.
+  with the read-only attribute is write protected. `tools/dsk2raw.py` converts JV1, JV3, DMK and
+  HFE images (`python tools/dsk2raw.py in.dmk /CP300/NAME.DSK`, or a whole folder at once, which
+  also writes 8.3 names and an `INDEX.TXT`); `tools/test_dsk2raw.py` is its self-test. The
+  controller only accepts sector IDs 1..18, so disks that number their sectors from 0 (LDOS,
+  NewDOS, MultiDOS) convert but do not work yet.
 - Supported: RESTORE, SEEK, STEP, READ/WRITE SECTOR (also multiple), READ ADDRESS, FORCE
   INTERRUPT. Not supported: READ TRACK and WRITE TRACK (formatting a disk), the 3 s motor timeout.
 - `sim/run_sys.sh` boots the whole machine in GHDL from a card image (`tools/mkfat.py` builds one
