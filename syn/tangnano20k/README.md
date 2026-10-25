@@ -22,17 +22,57 @@ files) and selects the SDRAM ports, controller, PLL phase and button polarity in
 
 Everything else is shared: the frame buffer, the arbiter, the 640x480 HDMI output with the menu, the core.
 
+## Tools
+
+All paths are the ones on the development machine; the versions are the ones the results below were produced with.
+
+| Step | Tool |
+|---|---|
+| Synthesis, place and route, timing | Gowin EDA V1.9.8.11 Education, command line `gw_sh.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\`) |
+| Programming | Gowin Programmer V1.9.8.11 Education, `programmer_cli.exe` or `programmer.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\`); USB driver from `C:\Apps\TangFPGA\GWU2X` |
+| Frame buffer simulation | Icarus Verilog 13.0 (`iverilog`, `vvp`; MSYS2: `pacman -S mingw-w64-x86_64-iverilog`) |
+| Core simulation (DE0 regression) | GHDL (MSYS2 mingw64), see `sim/run.sh` |
+| Helper scripts | Python 3 |
+
 ## Build
+
+Needs the ROM package `roms/cp300_roms_pkg.vhd` ([roms/README.md](../../roms/README.md)) and the git submodules
+(`git submodule update --init`).
 
 ```
 cd syn/tangnano20k
-C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\gw_sh.exe build.tcl
-python check_9k_limits.py
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\gw_sh.exe build.tcl
+python check_9k_limits.py     # fails if the 9K's resources are exceeded
 ```
 
-Bitstream: `impl/pnr/cp300_tn20k.fs`; program it with the Gowin Programmer or `openFPGALoader -b tangnano20k cp300_tn20k.fs`.
+Takes about two minutes. Results in `impl/pnr/`: `cp300_tn20k.fs` (bitstream), `cp300_tn20k.rpt.txt` (resources) and `cp300_tn20k.tr` (timing).
+The ROMs and the IO controller firmware are inside the bitstream.
 
 Last build: 6814 logic cells (the 9K has 8640), 2063 registers (6771), 26 block RAMs (26), 2 PLLs (2); clk42 77 MHz (42 needed).
+
+## Programming
+
+Connect the board's USB-C port. Check that the programmer sees it (this lists the cable and the device):
+
+```
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --scan
+```
+
+Load for a test (SRAM, lost at power-off):
+
+```
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --device GW2AR-18C --run 2 --fsFile impl\pnr\cp300_tn20k.fs
+```
+
+To keep it across power cycles use the board's external flash (`--run 8`, or `--run 9` to verify) (same command with `--run N`). The Gowin Programmer GUI (`programmer.exe`) does the
+same: choose the device, the operation and the `.fs` file. Nothing has been programmed from here yet: only `--scan` was run, and it found the cable and a GW2AR-18C family device.
+
+## Tests
+
+* Frame buffer path (arbiter, Z80 RAM bridge, frame writer, scan-out against a RAM model), Icarus Verilog:
+  `sim/tang/run.sh sdram`. It prints `PASS` when no frame is torn, no pixel is wrong and the Z80 reads back what it wrote.
+* The shared VHDL still elaborates for the DE0: `sim/run.sh` (GHDL).
+* Hardware: nothing has been run on a board yet.
 
 ## Pins
 

@@ -36,20 +36,56 @@ The 9K does not have the block RAM for a frame buffer, so the picture lives in t
 
 The HDMI output is plain DVI (no infoframes, no audio), which monitors and most TVs accept.
 
+## Tools
+
+All paths are the ones on the development machine; the versions are the ones the results below were produced with.
+
+| Step | Tool |
+|---|---|
+| Synthesis, place and route, timing | Gowin EDA V1.9.8.11 Education, command line `gw_sh.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\`) |
+| Programming | Gowin Programmer V1.9.8.11 Education, `programmer_cli.exe` or `programmer.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\`); USB driver from `C:\Apps\TangFPGA\GWU2X` |
+| Frame buffer simulation | Icarus Verilog 13.0 (`iverilog`, `vvp`; MSYS2: `pacman -S mingw-w64-x86_64-iverilog`) |
+| Core simulation (DE0 regression) | GHDL (MSYS2 mingw64), see `sim/run.sh` |
+| Helper scripts | Python 3 |
+
 ## Build
 
-Needs the Gowin tools (V1.9.8.11 Education is enough; it is installed in `C:\Apps\TangFPGA`), the ROM package
-`roms/cp300_roms_pkg.vhd` ([roms/README.md](../../roms/README.md)) and the git submodules (`git submodule update --init`).
+Needs the ROM package `roms/cp300_roms_pkg.vhd` ([roms/README.md](../../roms/README.md)) and the git submodules
+(`git submodule update --init`).
 
 ```
 cd syn/tangnano9k
-C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\gw_sh.exe build.tcl
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\gw_sh.exe build.tcl
 ```
 
-Result: `impl/pnr/cp300_tn9k.fs` (bitstream), `impl/pnr/cp300_tn9k.rpt.txt` and `.tr` (resources and timing).
-Load it with the Gowin Programmer (SRAM for a test, embedded flash to keep it) or `openFPGALoader -b tangnano9k cp300_tn9k.fs`.
+Takes about two minutes. Results in `impl/pnr/`: `cp300_tn9k.fs` (bitstream), `cp300_tn9k.rpt.txt` (resources) and `cp300_tn9k.tr` (timing).
+The ROMs and the IO controller firmware are inside the bitstream.
 
 Last build: 79% of the logic, all of the block RAM, clk42 44 MHz (42 needed), pixel clock 52 MHz (25.2 needed).
+
+## Programming
+
+Connect the board's USB-C port. Check that the programmer sees it (this lists the cable and the device):
+
+```
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --scan
+```
+
+Load for a test (SRAM, lost at power-off):
+
+```
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --device GW1NR-9C --run 2 --fsFile impl\pnr\cp300_tn9k.fs
+```
+
+To keep it across power cycles use the embedded flash (`--run 5`, or `--run 6` to verify) (same command with `--run N`). The Gowin Programmer GUI (`programmer.exe`) does the
+same: choose the device, the operation and the `.fs` file. Nothing has been programmed from here yet.
+
+## Tests
+
+* Frame buffer path (arbiter, Z80 RAM bridge, frame writer, scan-out against a RAM model), Icarus Verilog:
+  `sim/tang/run.sh`. It prints `PASS` when no frame is torn, no pixel is wrong and the Z80 reads back what it wrote.
+* The shared VHDL still elaborates for the DE0: `sim/run.sh` (GHDL).
+* Hardware: nothing has been run on a board yet.
 
 ## Files
 
