@@ -42,8 +42,8 @@ All paths are the ones on the development machine; the versions are the ones the
 
 | Step | Tool |
 |---|---|
-| Synthesis, place and route, timing | Gowin EDA V1.9.8.11 Education, command line `gw_sh.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\`) |
-| Programming | Gowin Programmer V1.9.8.11 Education, `programmer_cli.exe` or `programmer.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\`); USB driver from `C:\Apps\TangFPGA\GWU2X` |
+| Synthesis, place and route, timing | Gowin EDA V1.9.8.11 Education, command line `gw_sh.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\`) |
+| Programming | Gowin Programmer V1.9.8.11 Education, `programmer_cli.exe` or `programmer.exe` (`C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmer\bin\`); USB driver from `C:\Apps\TangFPGA\GWU2X` |
 | Frame buffer simulation | Icarus Verilog 13.0 (`iverilog`, `vvp`; MSYS2: `pacman -S mingw-w64-x86_64-iverilog`) |
 | Core simulation (DE0 regression) | GHDL (MSYS2 mingw64), see `sim/run.sh` |
 | Helper scripts | Python 3 |
@@ -55,7 +55,7 @@ Needs the ROM package `roms/cp300_roms_pkg.vhd` ([roms/README.md](../../roms/REA
 
 ```
 cd syn/tangnano9k
-C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDEin\gw_sh.exe build.tcl
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\gw_sh.exe build.tcl
 ```
 
 Takes about two minutes. Results in `impl/pnr/`: `cp300_tn9k.fs` (bitstream), `cp300_tn9k.rpt.txt` (resources) and `cp300_tn9k.tr` (timing).
@@ -68,13 +68,13 @@ Last build: 79% of the logic, all of the block RAM, clk42 44 MHz (42 needed), pi
 Connect the board's USB-C port. Check that the programmer sees it (this lists the cable and the device):
 
 ```
-C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --scan
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmer\bin\programmer_cli.exe --scan
 ```
 
 Load for a test (SRAM, lost at power-off):
 
 ```
-C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmerin\programmer_cli.exe --device GW1NR-9C --run 2 --fsFile impl\pnr\cp300_tn9k.fs
+C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\Programmer\bin\programmer_cli.exe --device GW1NR-9C --run 2 --fsFile impl\pnr\cp300_tn9k.fs
 ```
 
 To keep it across power cycles use the embedded flash (`--run 5`, or `--run 6` to verify) (same command with `--run N`). The Gowin Programmer GUI (`programmer.exe`) does the
