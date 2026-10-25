@@ -9,12 +9,18 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 | Video | the core's own 512 x 192 picture at 10.5 MHz / 59.4 Hz, scaled by the Pocket; three aspect modes, three phosphor colours |
 | Audio | 48 kHz 16 bit I2S, mono: the cassette port speaker bit, with volume and on/off in the core settings |
 | Keyboard | on-screen keyboard (Select), buttons as keys when it is hidden |
-| Disks | four WD1793 drives, **DMK** images (`.dsk` / `.dmk`) loaded from the Pocket's asset menu, read and write |
+| Disks | four WD1793 drives, **DMK** images (`.dsk` / `.dmk`) loaded from the Core Settings menu, read and write |
 | Not here | cassette, hard disk, RS-232, PS/2 and the original keyboard matrix (those are the DE0/Tang boards' features), save states, docked USB keyboard |
 
 ## Using it
 
-Copy the output of `package.py` ([Building](#building)) to the SD card: `Cores/` and `Platforms/` to the root, disk images to `Assets/cp300/common/`.
+### First start
+
+1. Build the core ([Building](#building)) and run `python package.py`. Copy `dist-sd/Cores/` and `dist-sd/Platforms/` to the root of the Pocket's SD card.
+2. Put disk images (`.dsk` / `.dmk`, DMK format) in `Assets/cp300/common/` on the card.
+3. Start **CP-300** from the Pocket's core list. With no disk selected the CP-300 ROM shows its `Cass?` prompt: answer **A** for BASIC (the ROM takes A/B, not L/H), then ENTER at `Mem. usada?` (open the keyboard with Select to type).
+4. To boot a disk: Analogue button, **Core Settings**, **Drive 0 (boot)**, pick the file, then **Reset CP-300**. The Pocket remembers the choice for the next start.
+5. At `TRSDOS Ready` (TRSDOS 1.3) type `BASIC`, press ENTER at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` for a file on Drive 1).
 
 **Disks.** The four drives are data slots, shown in the **Core Settings** menu as *Drive 0 (boot)* to *Drive 3*: pick a `.dsk` or `.dmk` file (DMK format; `tools/dsk2dmk.py` in the repository root converts JV1/JV3/HFE) and choose **Reset CP-300**, and the ROM boots it. With no disk in Drive 0 the ROM goes to `Cass?`. The Pocket remembers the file you picked and loads the same one at the next start; the core is held in reset until the slots have been read, so a remembered disk is there when the ROM first looks. A file chosen while the core runs swaps the floppy like a real drive. Changes the DOS makes to a disk are written back to the file on the SD card (turn on *Write protect disks* to prevent that).
 
@@ -32,7 +38,23 @@ Copy the output of `package.py` ([Building](#building)) to the SD card: `Cores/`
 
 The keyboard is the CP-300's own 8 x 8 matrix (the table in the repository README): letters, digits, `: ; , - . / @`, ENTER, CLEAR, BREAK, the four arrows, SPACE and both SHIFTs. SHIFT + digit and the other shifted symbols work through the latch, as on the real keyboard.
 
-**Core Settings** (Pocket menu): Phosphor (white / green / amber), Turbo CPU, Sound, Volume, Buttons are keys, Write protect disks, Reset CP-300, and a read-only disk status line (hex: bit 7 = IO controller running, bits 3:0 = drives that hold a usable DMK image).
+**Core Settings** (Analogue button, then Core Settings):
+
+| Setting | Values | What it does |
+|---|---|---|
+| Drive 0 (boot) .. Drive 3 | file browser | the disk image in that drive |
+| Phosphor | White / Green / Amber | colour of the text |
+| Turbo CPU | off / on | Z80 at about 4 MHz instead of 2.0 MHz |
+| Sound | on / off | the cassette-port speaker |
+| Volume | Low / Medium / High / Max | |
+| Buttons are keys | on / off | d-pad and buttons type keys while the keyboard is hidden |
+| Write protect disks | on / off | the DOS cannot change the disk files |
+| Reset CP-300 | action | reset the machine (needed after choosing a new boot disk) |
+| Disk status | read only, hex | bit 7 = IO controller running, bits 3:0 = drives holding a usable DMK |
+
+The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pixels), 5:3 and square pixels. Cassette (`Cass?` loading from tape) is not available; software comes from disks.
+
+**Troubleshooting.** Disk status shows 0 for a drive: the file is not a DMK with 256-byte sectors (convert with `tools/dsk2dmk.py`). `Diskette?` or a hang at boot: choose the file again and Reset CP-300. Disk errors under load: see *Disk speed* in the known limits.
 
 ## How it works
 
