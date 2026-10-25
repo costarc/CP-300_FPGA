@@ -103,19 +103,36 @@ The original keyboard is a passive 8 x 8 switch matrix (no diodes). On the CP-30
 
 Connector: the last nine pin pairs of the DE0 GPIO0 header (J4, pins 23-40, a 2 x 9 block), so one 18-pin ribbon plug is enough. Columns are on the odd pins, rows on the even pins, with 3.3 V and GND in the middle.
 
-| J4 pin | Signal | FPGA pin | | J4 pin | Signal | FPGA pin |
-|---|---|---|---|---|---|---|
-| 23 | column C0 | V14 | | 24 | row A0 | U14 |
-| 25 | column C1 | Y13 | | 26 | row A1 | W13 |
-| 27 | column C2 | U13 | | 28 | row A2 | V12 |
-| 29 | **3.3 V** (pull-up supply) | | | 30 | **GND** | |
-| 31 | column C3 | R10 | | 32 | row A3 | V11 |
-| 33 | column C4 | Y10 | | 34 | row A4 | W10 |
-| 35 | column C5 | T8 | | 36 | row A5 | V8 |
-| 37 | column C6 | W7 | | 38 | row A6 | W6 |
-| 39 | column C7 | V5 | | 40 | row A7 | U7 |
+| J4 pin | GPIO0 | FPGA pin | Signal | CP-300 keyboard connector CN-5 |
+|---|---|---|---|---|
+| 22 | D15 | AA4 | reset key (optional, low = pressed) | |
+| 23 | D16 | V14 | column C0 | pin 9 |
+| 24 | D17 | U14 | row A0 | pin 1 |
+| 25 | D18 | Y13 | column C1 | pin 10 |
+| 26 | D19 | W13 | row A1 | pin 2 |
+| 27 | D20 | U13 | column C2 | pin 11 |
+| 28 | D21 | V12 | row A2 | pin 3 |
+| 29 | | | **3.3 V** (pull-up supply) | |
+| 30 | | | **GND** | |
+| 31 | D22 | R10 | column C3 | pin 12 |
+| 32 | D23 | V11 | row A3 | pin 4 |
+| 33 | D24 | Y10 | column C4 | pin 13 |
+| 34 | D25 | W10 | row A4 | pin 5 |
+| 35 | D26 | T8 | column C5 | pin 14 |
+| 36 | D27 | V8 | row A5 | pin 6 |
+| 37 | D28 | W7 | column C6 | pin 15 |
+| 38 | D29 | W6 | row A6 | pin 7 |
+| 39 | D30 | V5 | column C7 | pin 16 |
+| 40 | D31 | U7 | row A7 | pin 8 |
 
-Optional: pin 22 (GPIO0_D15, AA4) is a reset input, low = pressed, with a pull-up. Connect the keyboard's reset key(s) between it and GND; it acts like BUTTON0.
+The same, from the keyboard connector side (the CP-300 board's CN-5 has the eight rows on pins 1-8 and the eight columns on pins 9-16; the numbers are read from the schematic, so check them against your keyboard cable with a multimeter before plugging it in):
+
+| CN-5 pin | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Signal | A0 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | C0 | C1 | C2 | C3 | C4 | C5 | C6 | C7 |
+| DE0 J4 pin | 24 | 26 | 28 | 32 | 34 | 36 | 38 | 40 | 23 | 25 | 27 | 31 | 33 | 35 | 37 | 39 |
+
+Optional: pin 22 (GPIO0_D15, AA4) is a reset input, low = pressed, with a pull-up. Connect the keyboard's reset key(s) between it and GND (pin 12 or 30); it acts like BUTTON0.
 
 The columns have the FPGA's weak internal pull-ups (about 25 kOhm), which is enough for a short cable. For a longer cable add a 4.7 kOhm to 10 kOhm resistor from each column to the 3.3 V on pin 29. The row and column resistors and inverters on the CP-300 board are not used; wire only the keyboard itself (the key matrix) to the plug.
 
