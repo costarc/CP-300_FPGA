@@ -14,7 +14,8 @@
 #include "dmk.h"
 
 #define COLS 32
-#define ROWS 8
+#define ROWS 16                /* the 16 line OSD: square pixels, 8 x 8 characters */
+#define LISTROWS 12            /* file names shown at once */
 
 #define K_UP    1
 #define K_DOWN  2
@@ -47,6 +48,8 @@ static file_t cfg_file;
 static uint8_t cfg_ok;
 
 static uint8_t sel;                  /* main menu selection, 0..5 */
+/* screen row of the selectable items: drives 0-3, cassette, reset */
+static const uint8_t item_row[NDRIVES + 2] = { 2, 3, 4, 5, 7, 9 };
 static uint8_t browse_target;        /* 0-3 drive, 4 cassette */
 static char list[MAXLIST][11];
 static uint8_t nlist;
@@ -330,30 +333,25 @@ static void draw_main(void)
 	clear_screen();
 	put(0, 1, "CP-300 FPGA");
 	for (i = 0; i < NDRIVES; i++) {
-		scr[1 + i][1] = 'D';
-		scr[1 + i][2] = 'R';
-		scr[1 + i][3] = 'I';
-		scr[1 + i][4] = 'V';
-		scr[1 + i][5] = 'E';
-		scr[1 + i][7] = '0' + i;
-		scr[1 + i][8] = ':';
+		put(item_row[i], 1, "DRIVE");
+		scr[item_row[i]][7] = '0' + i;
+		scr[item_row[i]][8] = ':';
 		fmt_name(nm, mount_name[i]);
-		put(1 + i, 10, nm);
+		put(item_row[i], 10, nm);
 	}
-	put(5, 1, "CASSETTE:");
+	put(item_row[NDRIVES], 1, "CASSETTE:");
 	fmt_name(nm, mount_name[NDRIVES]);
-	put(5, 11, nm);
-	put(6, 1, "RESET CP-300");
+	put(item_row[NDRIVES], 11, nm);
+	put(item_row[NDRIVES + 1], 1, "RESET CP-300");
 	if (!sd_ok) {
-		put(7, 1, "NO SD CARD, ERROR ");
-		scr[7][19] = '0' + sd_err / 10;
-		scr[7][20] = '0' + sd_err % 10;
+		put(14, 1, "NO SD CARD, ERROR ");
+		scr[14][19] = '0' + sd_err / 10;
+		scr[14][20] = '0' + sd_err % 10;
 	} else if (!have_dir) {
-		put(7, 1, "NO /CP300 DIRECTORY");
-	} else {
-		put(7, 1, "ENTER SELECT  ESC CLOSE");
+		put(14, 1, "NO /CP300 DIRECTORY");
 	}
-	inv_row = 1 + sel;
+	put(15, 1, "ENTER SELECT  ESC CLOSE");
+	inv_row = item_row[sel];
 	osd_show();
 }
 
@@ -392,19 +390,19 @@ static void draw_browse(void)
 		put(0, 1, "SELECT DISK FOR DRIVE");
 		scr[0][23] = '0' + browse_target;
 	}
-	for (r = 0; r < 6; r++) {
+	for (r = 0; r < LISTROWS; r++) {
 		i = top + r;
 		if (i >= nlist)
 			break;
 		if (i == 0)
-			put(1 + r, 1, "(EJECT)");
+			put(2 + r, 1, "(EJECT)");
 		else {
 			fmt_name(nm, list[i]);
-			put(1 + r, 1, nm);
+			put(2 + r, 1, nm);
 		}
 	}
-	put(7, 1, "ENTER SELECT  ESC BACK");
-	inv_row = 1 + (cursor - top);
+	put(15, 1, "ENTER SELECT  ESC BACK");
+	inv_row = 2 + (cursor - top);
 	osd_show();
 }
 
@@ -482,10 +480,10 @@ static void browse_key(uint8_t k)
 			cursor++;
 		break;
 	case K_PGUP:
-		cursor = cursor > 6 ? cursor - 6 : 0;
+		cursor = cursor > LISTROWS ? cursor - LISTROWS : 0;
 		break;
 	case K_PGDN:
-		cursor = cursor + 6 < nlist ? cursor + 6 : nlist - 1;
+		cursor = cursor + LISTROWS < nlist ? cursor + LISTROWS : nlist - 1;
 		break;
 	case K_F12:
 		close_menu();
@@ -506,8 +504,8 @@ static void browse_key(uint8_t k)
 	}
 	if (cursor < top)
 		top = cursor;
-	if (cursor >= top + 6)
-		top = cursor - 5;
+	if (cursor >= top + LISTROWS)
+		top = cursor - LISTROWS + 1;
 	draw_browse();
 }
 

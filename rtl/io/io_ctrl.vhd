@@ -195,7 +195,8 @@ begin
     if rising_edge(clk) then
       gdata <= CHARGEN_900_65(to_integer(glyph & fcnt(2 downto 0)));
       if fcnt < 10 then
-        if fcnt >= 2 then grows(to_integer(fcnt) - 2) <= gdata; end if;
+        -- gdata is the line fetched one clock ago, i.e. line fcnt - 1
+        if fcnt >= 1 and fcnt <= 8 then grows(to_integer(fcnt) - 1) <= gdata; end if;
         fcnt <= fcnt + 1;
       end if;
       if cen = '1' and iowr = '1' and port_a = x"06" then

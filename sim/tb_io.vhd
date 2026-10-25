@@ -55,7 +55,7 @@ begin
   -- OSD (decodes the same SPI protocol as osd.v)
   ----------------------------------------------------------------------
   osd : process
-    type osd_mem_t is array (0 to 2047) of std_logic_vector(7 downto 0);
+    type osd_mem_t is array (0 to 4095) of std_logic_vector(7 downto 0);
     variable mem : osd_mem_t := (others => x"00");
     variable sbuf : std_logic_vector(7 downto 0);
     variable cnt  : integer := 0;
@@ -86,8 +86,8 @@ begin
               shots := shots + 1;
               file_open(f, "osd_" & integer'image(shots) & ".pbm", write_mode);
               write(l, string'("P1")); writeline(f, l);
-              write(l, string'("256 64")); writeline(f, l);
-              for y in 0 to 63 loop
+              write(l, string'("256 128")); writeline(f, l);
+              for y in 0 to 127 loop
                 for x in 0 to 255 loop
                   b := mem((y / 8) * 256 + x);
                   if b(y mod 8) = '1' then write(l, string'("1 ")); else write(l, string'("0 ")); end if;

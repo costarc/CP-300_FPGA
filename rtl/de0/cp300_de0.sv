@@ -255,7 +255,7 @@ assign SD_CLK  = spi_sck;
 assign SD_CMD  = spi_mosi;
 assign SD_DAT3 = sd_cs_n;
 
-mist_video #(.COLOR_DEPTH(6), .SD_HCNT_WIDTH(10), .OUT_COLOR_DEPTH(4), .USE_BLANKS(1'b1)) mist_video(
+mist_video #(.COLOR_DEPTH(6), .SD_HCNT_WIDTH(10), .OUT_COLOR_DEPTH(4), .USE_BLANKS(1'b1), .BIG_OSD(1'b1)) mist_video(
 	.clk_sys        ( clk42            ),
 	.SPI_SCK        ( spi_sck          ),
 	.SPI_SS3        ( osd_ss3          ),
