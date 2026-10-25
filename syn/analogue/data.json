@@ -1,0 +1,47 @@
+{
+    "data": {
+        "magic": "APF_VER_1",
+        "data_slots": [
+            {
+                "name": "Drive 0 (boot)",
+                "id": 0,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": ["dsk", "dmk"],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            },
+            {
+                "name": "Drive 1",
+                "id": 1,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": ["dsk", "dmk"],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            },
+            {
+                "name": "Drive 2",
+                "id": 2,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": ["dsk", "dmk"],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            },
+            {
+                "name": "Drive 3",
+                "id": 3,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": ["dsk", "dmk"],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            }
+        ]
+    }
+}

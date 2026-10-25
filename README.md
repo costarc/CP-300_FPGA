@@ -4,6 +4,8 @@ An FPGA recreation of the **Prológica CP-300**, the Brazilian TRS-80 Model III 
 
 It runs the original CP-300 ROM and boots TRS-80 Model III disk operating systems (TRSDOS 1.3, LDOS, NEWDOS/80, DOS-500 and others) from disk images on an **SD card**, with an on-screen menu to mount and swap the images. VGA output, PS/2 keyboard.
 
+Other boards: Sipeed Tang Nano 9K / 20K (`syn/tangnano9k`, `syn/tangnano20k`, HDMI) and the **Analogue Pocket** (`syn/analogue`, on-screen keyboard and audio, [not yet compiled](syn/analogue/README.md)).
+
 | | |
 |---|---|
 | CPU | Z80 at 2.0 MHz (T80), Model III memory map and I/O |
@@ -231,6 +233,7 @@ rtl/mist-modules submodule: mist-devel/mist-modules (scandoubler, OSD)
 firmware/        C firmware of the IO controller (SDCC): SD card, FAT, DMK images, menu
 firmware/tests/  PC tests of the firmware code
 syn/de0/         Quartus II 13.0sp1 project
+syn/analogue/    Analogue Pocket (openFPGA) core: Quartus Prime project, JSON definition files, firmware port in firmware/pocket
 sim/             GHDL testbenches and scripts
 roms/            CP-300 ROM dumps (not committed)
 tools/           mkroms, mkfw, mkfat, dsk2dmk and their tests

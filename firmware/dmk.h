@@ -2,7 +2,11 @@
 #define DMK_H
 
 #include <stdint.h>
+#ifdef POCKET
+#include "pocket/slotfile.h"      /* images are APF data slots, not files on an SD card */
+#else
 #include "fat.h"
+#endif
 
 /* DMK disk images (David Keil): 16-byte header, then for every track and side a 128-byte table of
  * ID-field pointers followed by the track bytes as they are on the disk, ID fields, data fields and
