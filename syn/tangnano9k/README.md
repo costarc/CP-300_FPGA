@@ -2,24 +2,39 @@
 
 Port of the CP-300 core (see the top-level [README](../../README.md)) to the Tang Nano 9K (Gowin GW1NR-LV9QN88PC6/I5).
 Same Z80 / Model III core, WD1793 floppy controller, SD card menu and original keyboard as the DE0 build;
-only the board layer is different.
+only the board layer is different. The board layer is shared with the [Tang Nano 20K port](../tangnano20k/README.md)
+(`rtl/tang/`); this folder holds the 9K pin file, timing constraints and build script.
 
-**Status: synthesises, places and meets timing at 42 MHz with the Gowin tools. Not tried on a board yet.**
+**Status: synthesises, places and meets timing in the Gowin tools, and the frame buffer path passes its simulation
+([sim/tang](../../sim/tang/run.sh)). Not tried on a board yet.**
 
 ## What differs from the DE0
 
 | | DE0 | Tang Nano 9K |
 |---|---|---|
 | Clock | 50 MHz, altpll -> 42 MHz | 27 MHz, rPLL -> 42 MHz (core), 42 MHz 90 degrees later (HyperRAM clock) |
-| Z80 RAM (48 KB) | SDRAM | the on-chip 8 MB HyperRAM (PSRAM) through [zf3's controller](https://github.com/zf3/psram-tang-nano-9k), [ram_bridge.v](ram_bridge.v) |
-| Video | 4-bit VGA from a resistor DAC | HDMI (DVI) on the board's connector. No VGA on the GPIOs |
+| Z80 RAM (48 KB) | SDRAM | the on-chip 8 MB HyperRAM through [zf3's controller](https://github.com/zf3/psram-tang-nano-9k) |
+| Video | 4-bit VGA from a resistor DAC | HDMI (DVI) on the board's connector, **standard 640x480 @ 60 Hz**. No VGA on the GPIOs |
 | SD card | DE0 socket | the board's TF slot (SPI mode) |
-| ROM / video RAM / disk buffers | M9K | BSRAM (25 of 26 blocks used) |
+| ROM / video RAM / disk buffers | M9K | BSRAM (all 26 blocks used) |
 | IO controller CPU | 42 MHz | 21 MHz (`CPU_HALF`): the GW1NR-9 cannot run a T80 at 42 MHz |
 | Switches | SW0-SW4 | S1 = reset, S2 = turbo on/off. 60 Hz mode fixed, no scanlines |
 
-The Z80 RAM bridge raises WAIT while a HyperRAM access is going on. An access takes about 15 clocks, less than one T state,
-so in normal (2 MHz) mode the CPU does not wait; in turbo mode it waits one T state per RAM access.
+### How the video works
+
+The 9K does not have the block RAM for a frame buffer, so the picture lives in the HyperRAM, next to the Z80's RAM:
+
+* `fb_writer` takes the core's raw picture (512 x 192 pixels, 1 bit each: ink or paper) and stores it as 12 KB frames.
+  Three frame buffers rotate, so the scan-out never reads a frame that is being written and never shows half of two frames.
+* `fb_scanout` runs the 640x480 @ 60 Hz timing (25.2 MHz pixel clock from its own PLL, 126 MHz for the TMDS serialisers) and reads
+  each line from the frame buffer one line ahead. The picture is centred as 512 x 384 (every line twice), the border colour fills
+  the rest, and the menu OSD is drawn on top (2 x 2 pixels per OSD pixel).
+* `psram_arb` shares the one HyperRAM controller between the Z80 (highest priority), the frame writer and the scan-out. The Z80
+  RAM bridge raises WAIT while a RAM access is going on; an access takes about 20 clocks, so in normal (2 MHz) mode the CPU rarely
+  waits (worst case seen in simulation: one extra T state).
+* Ink, paper and border colours are the core's own (they change with the keyboard shortcuts as before).
+
+The HDMI output is plain DVI (no infoframes, no audio), which monitors and most TVs accept.
 
 ## Build
 
@@ -34,30 +49,26 @@ C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\gw_sh.exe build.tcl
 Result: `impl/pnr/cp300_tn9k.fs` (bitstream), `impl/pnr/cp300_tn9k.rpt.txt` and `.tr` (resources and timing).
 Load it with the Gowin Programmer (SRAM for a test, embedded flash to keep it) or `openFPGALoader -b tangnano9k cp300_tn9k.fs`.
 
-Last build: 75% of the logic, 97% of the block RAM, clk42 meets 42 MHz.
+Last build: 79% of the logic, all of the block RAM, clk42 44 MHz (42 needed), pixel clock 52 MHz (25.2 needed).
 
 ## Files
 
+Board files here: `cp300_tn9k.cst` (pins), `cp300_tn9k.sdc` (timing), `build.tcl`. The design is in `rtl/tang/`:
+
 | File | |
 |---|---|
-| `cp300_tn9k.v` | top level |
-| `pll_tn9k.v` | 27 -> 42 MHz (+ phase shifted copy) and 42 -> 210 MHz, 210/5 = 42 MHz pixel clock |
-| `psram_controller.v` | HyperRAM controller by Feng Zhou, Apache 2.0 ([license](LICENSE.psram_controller.txt)); one fix to the power-up counter width |
-| `ram_bridge.v` | one Z80 RAM cycle = one HyperRAM access, produces the WAIT |
-| `dvi_tx.v`, `video_cdc.v` | TMDS encoders, OSER10 serialisers, and the FIFO from the core clock to the pixel clock |
+| `cp300_tang.v` | top level (shared with the 20K) |
+| `pll_tang.v` | 27 -> 42 MHz (+ phase shifted copy), and 27 -> 126 MHz, /5 = 25.2 MHz |
+| `psram_controller.v` | HyperRAM controller by Feng Zhou, Apache 2.0 ([license](../../rtl/tang/LICENSE.psram_controller.txt)); one fix to the power-up counter width |
+| `psram_arb.v`, `ram_bridge.v` | three clients on one RAM; one Z80 RAM cycle = one access, produces the WAIT |
+| `fb_writer.v`, `fb_scanout.v` | frame buffer in RAM, 640x480 timing, OSD overlay |
+| `dvi_tx.v` | TMDS encoders and OSER10 serialisers |
+| `sync_stable.v` | takes a slowly changing bus across clock domains |
 | `osd.v` | copy of `rtl/mist-modules/osd.v` with a block-RAM friendly OSD buffer (the submodule is not touched) |
-| `cp300_tn9k.cst`, `cp300_tn9k.sdc` | pins and timing |
-| `build.tcl` | command line build |
 
-Changes in the shared sources: `rtl/ht1080z/ht1080z.vhd` has a generic `EXT_RAM` (default false, the DE0 is unchanged)
-with the `ext_ram_*` ports, and `rtl/io/io_ctrl.vhd` a generic `CPU_HALF` (default false).
-
-## Video
-
-The core's picture goes through the MiST scandoubler (31 kHz, 21 MHz pixel rate, 1344 x ~524 total), and every pixel is sent twice
-so the DVI pixel clock is 42 MHz. That is not a standard mode (about 1024 x 480 active, 31 kHz, 60 Hz): most monitors and capture
-cards accept it, a few TVs may not. DE comes from the blanking signals, hsync/vsync polarity is what the scandoubler outputs.
-The F12 / SHIFT+BREAK menu is drawn into the picture as on the DE0.
+Changes in the shared sources: `rtl/ht1080z/ht1080z.vhd` has a generic `EXT_RAM` (default false, the DE0 is unchanged) with the
+`ext_ram_*` ports, and new `vid_*` outputs with the raw picture and colours; `videoctrl.vhd` exports them; `rtl/io/io_ctrl.vhd` has
+a generic `CPU_HALF` (default false).
 
 ## Pins
 
@@ -67,7 +78,7 @@ The F12 / SHIFT+BREAK menu is drawn into the picture as on the DE0.
 |---|---|---|
 | `clk27` | 52 | board crystal |
 | `btn_s1_n` / `btn_s2_n` | 3 / 4 | S1 reset, S2 turbo |
-| `led_n[5:0]` | 10 11 13 14 15 16 | LED0 running, LED1 PLLs locked, LED2 HyperRAM ready, LED3 turbo, LED5:4 IO controller |
+| `led_n[5:0]` | 10 11 13 14 15 16 | LED0 running, LED1 PLLs locked, LED2 RAM ready, LED3 turbo, LED5:4 IO controller |
 | HDMI | 69/68 clk, 71/70 d0, 73/72 d1, 75/74 d2 | board connector |
 | SD (TF slot) | 36 clk, 37 mosi, 38 cs, 39 miso | board, SPI mode |
 | `uart_tx` / `uart_rx` | 17 / 18 | board USB serial (RS-232 ports E8-EA) |
@@ -84,8 +95,8 @@ Free header pins: 31, 32, 76, 77.
 ## Not verified
 
 * Everything on a real board: HDMI picture, HyperRAM at 42 MHz (the controller was tested by its author at 81 MHz, LATENCY 3),
-  SD card, PS/2.
-* The PLL chain: the 210 MHz TMDS PLL takes the 42 MHz core clock as its input (the tools accept it). If the HDMI picture
-  is unstable look here first.
+  SD card, PS/2. The frame buffer logic is simulated against a behavioural RAM, not the real controller.
 * Timing is met with multicycle constraints for the two T80 CPUs (see the comments in `cp300_tn9k.sdc`), which rely on
   their clock enables; the Gowin timing report is clean with them.
+* The frame buffer hand-over between the two clock domains uses a stable-sample filter, so a frame can in rare cases be
+  shown a frame late or repeated; the simulation shows no torn frames.

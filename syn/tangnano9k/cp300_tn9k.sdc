@@ -23,3 +23,11 @@ create_clock -name clk42 -period 23.809 [get_nets {clk42}]
 create_clock -name spi_sck -period 20 [get_nets {spi_sck_r_5}]
 set_false_path -from [get_clocks {spi_sck}] -to [get_clocks {clk42}]
 set_false_path -from [get_clocks {clk42}] -to [get_clocks {spi_sck}]
+
+# the HDMI pixel clock (25.2 MHz, own PLL) is unrelated to the core clock: the video path crosses with
+# toggles, stable-sample filters and line buffers written well before they are read
+create_clock -name clkpix -period 39.683 [get_nets {clk_pix}]
+set_false_path -from [get_clocks {clk42}] -to [get_clocks {clkpix}]
+set_false_path -from [get_clocks {clkpix}] -to [get_clocks {clk42}]
+set_false_path -from [get_clocks {spi_sck}] -to [get_clocks {clkpix}]
+set_false_path -from [get_clocks {clkpix}] -to [get_clocks {spi_sck}]

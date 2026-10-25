@@ -1,7 +1,15 @@
 // A simple OSD implementation. Can be hooked up between a cores
 // VGA output and the physical VGA pins
 
-module osd (
+module osd #(
+	parameter OSD_X_OFFSET = 11'd0,
+	parameter OSD_Y_OFFSET = 11'd0,
+	parameter OSD_COLOR    = 3'd0,
+	parameter OSD_AUTO_CE  = 1'b1,
+	parameter USE_BLANKS   = 1'b0,
+	parameter OUT_COLOR_DEPTH = 6,
+	parameter BIG_OSD = 1'b0
+) (
 	// OSDs pixel clock, should be synchronous to cores pixel clock to
 	// avoid jitter.
 	input        clk_sys,
@@ -29,14 +37,6 @@ module osd (
 	output [OUT_COLOR_DEPTH-1:0] B_out
 );
 
-parameter OSD_X_OFFSET = 11'd0;
-parameter OSD_Y_OFFSET = 11'd0;
-parameter OSD_COLOR    = 3'd0;
-parameter OSD_AUTO_CE  = 1'b1;
-parameter USE_BLANKS   = 1'b0;
-parameter OUT_COLOR_DEPTH = 6;
-parameter BIG_OSD = 1'b0;
-
 localparam OSD_WIDTH   = 11'd256;
 localparam OSD_HEIGHT  = 11'd128;
 localparam OSD_LINES   = 8 << BIG_OSD;
@@ -49,7 +49,7 @@ localparam OSD_WIDTH_PADDED = OSD_WIDTH + (OSD_WIDTH >> 1);  // 25% padding left
 
 // this core supports only the display related OSD commands
 // of the minimig
-reg        osd_enable;
+reg        osd_enable = 1'b0;
 reg  [7:0] osd_buffer[256*OSD_LINES-1:0];  // the OSD buffer itself
 
 // Tang Nano 9K: copy of mist-modules/osd.v with the OSD buffer written in its own
@@ -111,7 +111,7 @@ wire doublescan = (dsp_height>350);
 
 reg auto_ce_pix;
 always @(posedge clk_sys) begin : cedetect
-	reg [15:0] cnt = 0;
+	reg [15:0] cnt;
 	reg  [2:0] pixsz;
 	reg  [2:0] pixcnt;
 	reg        hs;
@@ -215,7 +215,7 @@ end
 wire [10:0] osd_hcnt    = h_cnt - h_osd_start;
 wire [10:0] osd_vcnt    = v_cnt - v_osd_start;
 wire [10:0] osd_hcnt_next  = osd_hcnt + 2'd1;  // one pixel offset for osd byte address register
-reg         osd_de;
+reg         osd_de = 1'b0;
 
 reg [11:0] osd_buffer_addr;
 reg  [7:0] osd_byte;

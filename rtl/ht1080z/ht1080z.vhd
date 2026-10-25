@@ -85,6 +85,13 @@ entity ht1080z is
            ps2dat : in  STD_LOGIC;
 
            ht_rgb : out std_logic_vector(17 downto 0);
+         -- raw picture (see videoctrl): 1 bit per pixel + the three colours, for frame-buffer back ends
+       vid_screen : out std_logic;
+          vid_ink : out std_logic;
+         vid_pxen : out std_logic;
+      vid_ink_rgb : out std_logic_vector(17 downto 0);
+    vid_paper_rgb : out std_logic_vector(17 downto 0);
+   vid_border_rgb : out std_logic_vector(17 downto 0);
                hs : out STD_LOGIC;
                vs : out STD_LOGIC;
                hb : out STD_LOGIC;
@@ -171,6 +178,29 @@ signal cpudi    : std_logic_vector(7 downto 0);
 signal cpuwr,cpurd,cpumreq,cpuiorq,cpunmi,cpuint,cpum1,cpuClkEn,clkref : std_logic;
 
 signal rgbi : std_logic_vector(3 downto 0);
+signal ink_c, paper_c, border_c : std_logic_vector(3 downto 0);
+  function pal(c : std_logic_vector(3 downto 0)) return std_logic_vector is
+  begin
+    case c is
+      when "0000" => return "000000000000000000";
+      when "0001" => return "000000000000100000";
+      when "0010" => return "000000100000000000";
+      when "0011" => return "000000100000100000";
+      when "0100" => return "100000000000000000";
+      when "0101" => return "100000000000100000";
+      when "0110" => return "110000011000000000";
+      when "0111" => return "100000100000100000";
+      when "1000" => return "110000110000110000";
+      when "1001" => return "000000000000111100";
+      when "1010" => return "000000111100000000";
+      when "1011" => return "000000111100111100";
+      when "1100" => return "111110000000000000";
+      when "1101" => return "111100000000111100";
+      when "1110" => return "111110111110000000";
+      when others => return "111110111110111110";
+    end case;
+  end function;
+
 signal romdo,vramdo,ramdo,ramHdo,kbdout : std_logic_vector(7 downto 0);
 signal vramcs : std_logic;
 
@@ -377,6 +407,8 @@ begin
 	 paperp => paperpulse,
 	borderp => borderpulse,
 	oddline => oddline,
+	pix_screen => vid_screen, pix_ink => vid_ink, pix_en => vid_pxen,
+	ink_c => ink_c, paper_c => paper_c, border_c => border_c,
 	  hsync => hs,
 	  vsync => vs,
 	  hblank=> hb,
@@ -409,24 +441,8 @@ begin
  	 
 	-- fix palette for now
 	--with rgbi select rgb <=
-	with rgbi select ht_rgb <=
-	 "000000000000000000" when "0000",
-	 "000000000000100000" when "0001",
-	 "000000100000000000" when "0010",
-	 "000000100000100000" when "0011",
-	 "100000000000000000" when "0100",
-	 "100000000000100000" when "0101",
-	 "110000011000000000" when "0110",
-	 "100000100000100000" when "0111",
-	 "110000110000110000" when "1000",
-	 "000000000000111100" when "1001",
-	 "000000111100000000" when "1010",
-	 "000000111100111100" when "1011",
-	 "111110000000000000" when "1100",
-	 "111100000000111100" when "1101",
-	 "111110111110000000" when "1110",
-	 "111110111110111110" when others;
-
+	ht_rgb <= pal(rgbi);
+	vid_ink_rgb <= pal(ink_c); vid_paper_rgb <= pal(paper_c); vid_border_rgb <= pal(border_c);
   sdram_gen : if not EXT_RAM generate
   sdram_inst : sdram
     port map( sd_data => SDRAM_DQ,

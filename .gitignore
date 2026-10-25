@@ -32,3 +32,4 @@ syn/de0/q.log
 
 # Gowin
 syn/**/impl/
+sim/tang/*.vvp

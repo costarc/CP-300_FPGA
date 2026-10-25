@@ -75,6 +75,14 @@ entity videoctrl is
 			 paperp : in  STD_LOGIC;
 			borderp : in  STD_LOGIC;
 			oddline : out STD_LOGIC;
+			-- raw picture for frame-buffer back ends: pix_ink is the pixel (1 = ink) while pix_screen is high,
+			-- sampled on pix_en; ink_c/paper_c/border_c are the current colours (rgbi)
+			pix_screen : out STD_LOGIC;
+			pix_ink : out STD_LOGIC;
+			pix_en : out STD_LOGIC;
+			ink_c : out STD_LOGIC_VECTOR (3 downto 0);
+			paper_c : out STD_LOGIC_VECTOR (3 downto 0);
+			border_c : out STD_LOGIC_VECTOR (3 downto 0);
             rgbi : out STD_LOGIC_VECTOR (3 downto 0);	
 				pclk : out STD_LOGIC;
            hsync : out STD_LOGIC;
@@ -419,6 +427,12 @@ vblank <= not vblank_n;
 rgbi <= pixel when blank='1' else "0000";
 pclk <= clk10_5 when vvga='0' else clk21;
 oddline <= v1;
+pix_screen <= screen;
+pix_ink <= shiftReg(7);
+pix_en <= pxclk_en;
+ink_c <= ink;
+paper_c <= paper;
+border_c <= border;
 
 -- synthesis translate_off
 -- Simulation only: write the 64x16 screen to screen.txt at every frame start.
