@@ -18,6 +18,7 @@ architecture sim of tb_io is
   signal clk, reset : std_logic := '0';
   signal sd_cs_n, spi_sck, spi_mosi, sd_miso, osd_ss3 : std_logic;
   signal ps2clk, ps2dat : std_logic := '1';
+  signal ext : std_logic_vector(63 downto 0) := (others => '0');   -- original keyboard matrix
   signal menu_open, core_rst : std_logic;
 
   signal log_cmd : integer := 0;
@@ -31,7 +32,7 @@ begin
     port map (clk => clk, reset => reset,
               sd_cs_n => sd_cs_n, spi_sck => spi_sck, spi_mosi => spi_mosi,
               sd_miso => sd_miso, sd_wp_n => '1', osd_ss3 => osd_ss3,
-              ps2clk => ps2clk, ps2dat => ps2dat,
+              ps2clk => ps2clk, ps2dat => ps2dat, ext_keys => ext,
               menu_open => menu_open, core_rst => core_rst,
               fdc_rd => '0', fdc_wr => '0', fdc_ra => '0', fdc_track => x"00", fdc_trkreg => x"00",
               fdc_sector => x"00", fdc_dam => '0', fdc_res_found => open, fdc_res_crc => open,
@@ -148,6 +149,28 @@ begin
     wait for 40 ms;
     tap(x"76");               -- esc
     wait for 40 ms;
+    wait;
+  end process;
+
+  -- the original keyboard: SHIFT + BREAK opens the menu, then DOWN, ENTER and BREAK (= Esc) move in it
+  matrix : process
+    procedure tap(k : integer) is
+    begin
+      ext(k) <= '1'; wait for 20 ms; ext(k) <= '0'; wait for 20 ms;
+    end procedure;
+  begin
+    wait for 330 ms;                      -- after the PS/2 key script above
+    ext(56) <= '1'; wait for 20 ms;       -- left shift down
+    ext(50) <= '1'; wait for 20 ms;       -- BREAK: SHIFT + BREAK
+    ext(50) <= '0'; ext(56) <= '0'; wait for 60 ms;
+    tap(52);                              -- DOWN
+    tap(52);                              -- DOWN
+    tap(48);                              -- ENTER: the file list
+    wait for 40 ms;
+    tap(50);                              -- BREAK = Esc: back to the main menu
+    wait for 40 ms;
+    ext(57) <= '1'; wait for 20 ms; ext(50) <= '1'; wait for 20 ms;   -- right shift + BREAK closes the menu
+    ext(50) <= '0'; ext(57) <= '0';
     wait;
   end process;
 

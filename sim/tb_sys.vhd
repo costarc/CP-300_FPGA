@@ -38,7 +38,7 @@ begin
     port map (clk => clk, reset => reset,
               sd_cs_n => sd_cs_n, spi_sck => spi_sck, spi_mosi => spi_mosi,
               sd_miso => sd_miso, sd_wp_n => '1', osd_ss3 => osd_ss3,
-              ps2clk => '1', ps2dat => '1',
+              ps2clk => '1', ps2dat => '1', ext_keys => (others => '0'),
               menu_open => menu_open, core_rst => core_rst,
               fdc_rd => fdc_rd, fdc_wr => fdc_wr, fdc_ra => fdc_ra, fdc_track => fdc_track,
               fdc_trkreg => fdc_trkreg, fdc_sector => fdc_sector, fdc_dam => fdc_dam,

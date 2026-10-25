@@ -26,7 +26,7 @@ Works on a DE0: the ROM boots, the menu shows on the VGA picture, and TRSDOS 1.3
 | Floppy controller WD1793, DMK images, read and write | done (no formatting: READ/WRITE TRACK) |
 | Cassette (`.CAS` files from the SD card, record) | not started |
 | Hard disk (FreHD-compatible WD1010 at C8-CF) | not started |
-| Original CP-300 keyboard matrix on the GPIO header (3.3 V) | done in the design and in simulation, [not yet tested on a real keyboard](#original-cp-300-keyboard) |
+| Original CP-300 keyboard matrix on the GPIO header (3.3 V) | done in the design and in simulation, SHIFT + BREAK opens the menu; [not yet tested on a real keyboard](#original-cp-300-keyboard) |
 | Sound | none (the HT1080Z sound chip was removed; only the tape port speaker bit remains) |
 
 Resources: 7,359 of 15,408 logic elements (48%), 430,208 of 516,096 memory bits (83%), timing met at 42 MHz.
@@ -47,14 +47,15 @@ The CP-300 stays in reset while the card is read, so the disks listed in `CP300.
 
 ### On-screen menu
 
-Press **F12** to open or close the menu. While it is open the keyboard goes to the menu, not to the CP-300.
+Press **F12** on the PS/2 keyboard, or **SHIFT + BREAK** on the original keyboard, to open or close the menu. While it is open both keyboards go to the menu, not to the CP-300. The CP-300 ROM treats SHIFT + BREAK as a plain BREAK, so nothing is lost; the BREAK of that chord is not passed on to the CP-300.
 
-| Key | Action |
-|---|---|
-| Up / Down, PgUp / PgDn | move |
-| Enter | select a menu item, or a file in the file list |
-| Esc | back / close |
-| F12 | close |
+| PS/2 key | Original CP-300 key | Action |
+|---|---|---|
+| F12 | **SHIFT + BREAK** (either shift) | open or close the menu |
+| Up / Down | UP / DOWN | move |
+| PgUp / PgDn | LEFT / RIGHT | page through the file list |
+| Enter | ENTER | select a menu item, or a file in the file list |
+| Esc | BREAK | back / close |
 
 The menu lists **Drive 0-3**, the **cassette** file (selection only, playback is not done yet) and **Reset CP-300**. Choosing a drive shows the `*.DSK` files in `/CP300`; picking one mounts it at once, like swapping a floppy, and `(EJECT)` removes the disk. After mounting a boot disk in Drive 0, choose **Reset CP-300**.
 
@@ -131,7 +132,7 @@ The keys (row = address line, column = data bit, as printed on the schematic):
 | A6 | ENTER | CLEAR | BREAK | UP | DOWN | LEFT | RIGHT | SPACE |
 | A7 | L SHIFT | R SHIFT | | | | | | |
 
-The on-screen menu is opened with F12 on the PS/2 keyboard; the original keyboard has no F12 key, so keep a PS/2 keyboard connected to use the menu.
+The original keyboard has no F12 key; **SHIFT + BREAK** opens the menu, and UP, DOWN, LEFT, RIGHT, ENTER and BREAK move around in it (table above). A PS/2 keyboard is not needed.
 
 ## Building from the command line
 

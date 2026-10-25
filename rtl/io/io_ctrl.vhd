@@ -49,6 +49,7 @@ entity io_ctrl is
 
     ps2clk    : in  std_logic;
     ps2dat    : in  std_logic;
+    ext_keys  : in  std_logic_vector(63 downto 0);   -- original keyboard matrix (8 * row + column), menu keys
 
     menu_open : out std_logic;
     core_rst  : out std_logic;
@@ -116,6 +117,12 @@ architecture rtl of io_ctrl is
   signal fifo    : fifo_t := (others => (others => '0'));
   signal fifo_wp, fifo_rp : unsigned(3 downto 0) := (others => '0');
   signal fifo_do : std_logic_vector(7 downto 0);
+
+  -- menu keys from the original keyboard, turned into the PS/2 codes the firmware knows
+  signal ek_prev  : std_logic_vector(63 downto 0) := (others => '0');
+  signal chord_prev : std_logic := '0';
+  signal ev_b0, ev_b1 : std_logic_vector(7 downto 0) := (others => '0');
+  signal ev_cnt   : integer range 0 to 2 := 0;
 
   signal dbg_r   : std_logic_vector(7 downto 0) := (others => '0');
   signal ctl4    : std_logic_vector(1 downto 0) := (others => '0');
@@ -258,19 +265,49 @@ begin
 
   fifo_do <= fifo(to_integer(fifo_rp));
 
+
+  -- SHIFT + BREAK opens and closes the menu (F12, scan code 07). While the menu is open the arrow
+  -- keys, ENTER and BREAK move around in it: UP / DOWN, LEFT = PgUp, RIGHT = PgDn, ENTER, BREAK = Esc.
   process(clk)
+    variable pressed : std_logic_vector(63 downto 0);
+    variable chord   : std_logic;
   begin
     if rising_edge(clk) then
       ps2_f_r <= ps2_f;
+      ek_prev <= ext_keys;
+      pressed := ext_keys and not ek_prev;                       -- keys that went down this clock
+      chord := ext_keys(50) and (ext_keys(56) or ext_keys(57));  -- BREAK with a SHIFT
+      chord_prev <= chord;
       if reset = '1' or (cen = '1' and iowr = '1' and port_a = x"02") then
         fifo_wp <= (others => '0'); fifo_rp <= (others => '0');
+        ev_cnt <= 0;
       else
         if ps2_f = '1' and ps2_f_r = '0' and (fifo_wp + 1) /= fifo_rp then
           fifo(to_integer(fifo_wp)) <= ps2_d;
           fifo_wp <= fifo_wp + 1;
+        elsif ev_cnt /= 0 and (fifo_wp + 1) /= fifo_rp then
+          -- a keyboard event waits: its bytes go into the FIFO behind the PS/2 bytes
+          fifo(to_integer(fifo_wp)) <= ev_b0;
+          fifo_wp <= fifo_wp + 1;
+          ev_b0 <= ev_b1;
+          ev_cnt <= ev_cnt - 1;
         end if;
         if cen = '1' and rdp = '1' and rd_port = x"03" and fifo_rp /= fifo_wp then
           fifo_rp <= fifo_rp + 1;
+        end if;
+        -- keys of the original keyboard, as PS/2 scan codes for the firmware
+        if ev_cnt = 0 then
+          if chord = '1' and chord_prev = '0' then
+            ev_b0 <= x"07"; ev_cnt <= 1;                                                  -- F12
+          elsif ctl4(0) = '1' and (ext_keys(56) or ext_keys(57)) = '0' then               -- menu open
+            if    pressed(51) = '1' then ev_b0 <= x"E0"; ev_b1 <= x"75"; ev_cnt <= 2;     -- UP
+            elsif pressed(52) = '1' then ev_b0 <= x"E0"; ev_b1 <= x"72"; ev_cnt <= 2;     -- DOWN
+            elsif pressed(53) = '1' then ev_b0 <= x"E0"; ev_b1 <= x"7D"; ev_cnt <= 2;     -- LEFT = PgUp
+            elsif pressed(54) = '1' then ev_b0 <= x"E0"; ev_b1 <= x"7A"; ev_cnt <= 2;     -- RIGHT = PgDn
+            elsif pressed(48) = '1' then ev_b0 <= x"5A"; ev_cnt <= 1;                     -- ENTER
+            elsif pressed(50) = '1' then ev_b0 <= x"76"; ev_cnt <= 1;                     -- BREAK = Esc
+            end if;
+          end if;
         end if;
       end if;
     end if;

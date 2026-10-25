@@ -114,13 +114,18 @@ wire  [1:0] cass_out;
 wire        uart_tx, uart_rts;
 
 // original keyboard scanner
-wire [63:0] ext_keys;
+wire [63:0] ext_keys_raw;
 matrix_kbd matrix_kbd (
 	.clk(clk42),
 	.row_n(KBD_ROW),
 	.col_n(KBD_COL),
-	.keys(ext_keys)
+	.keys(ext_keys_raw)
 );
+
+// What the CP-300 sees: nothing while the menu is open (the keys belong to the menu then), and no
+// BREAK while SHIFT is down (SHIFT+BREAK opens the menu; the ROM treats it as BREAK anyway).
+wire        shift_dn = ext_keys_raw[56] | ext_keys_raw[57];       // row 7: left / right shift
+wire [63:0] ext_keys = menu_open ? 64'd0 : {ext_keys_raw[63:51], ext_keys_raw[50] & ~shift_dn, ext_keys_raw[49:0]};
 
 // floppy controller <-> IO controller
 wire  [7:0] fdc_track, fdc_trkreg, fdc_sector;
@@ -243,6 +248,7 @@ io_ctrl io_ctrl (
 	.osd_ss3(osd_ss3),
 	.ps2clk(PS2_KBCLK),
 	.ps2dat(PS2_KBDAT),
+	.ext_keys(ext_keys_raw),
 	.menu_open(menu_open),
 	.core_rst(core_rst),
 	.dbg(io_dbg),
