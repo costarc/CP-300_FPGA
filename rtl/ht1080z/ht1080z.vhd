@@ -49,6 +49,7 @@ use work.sim_trace_cfg.all;
 -- synthesis translate_on
 
 entity ht1080z is
+    generic ( EXT_RAM : boolean := false );  -- true: Z80 RAM is outside (ext_ram_*), no SDRAM controller
     Port ( clk42m : in  STD_LOGIC;
         pllLocked : in  STD_LOGIC;
             reset : in  STD_LOGIC;
@@ -103,6 +104,15 @@ entity ht1080z is
           exp_din : in  std_logic_vector(7 downto 0);
            exp_oe : in  std_logic;
 
+         -- external RAM (EXT_RAM = true): the owner of the RAM raises ext_ram_wait
+         -- until the access of the current Z80 cycle is done
+      ext_ram_addr : out std_logic_vector(15 downto 0);
+        ext_ram_rd : out std_logic;
+        ext_ram_wr : out std_logic;
+       ext_ram_din : out std_logic_vector(7 downto 0);
+      ext_ram_dout : in  std_logic_vector(7 downto 0) := x"ff";
+      ext_ram_wait : in  std_logic := '0';
+
 		 -- SDRAM
 		  SDRAM_nCS : out std_logic;                     -- Chip Select
 		   SDRAM_DQ : inout std_logic_vector(15 downto 0); -- SDRAM Data bus 16 Bits
@@ -143,6 +153,7 @@ signal sdram_dqm  : std_logic_vector(1 downto 0);
 signal ram_addr : std_logic_vector(24 downto 0);
 signal  ram_din : STD_LOGIC_VECTOR(7 downto 0);
 signal ram_dout : STD_LOGIC_VECTOR(7 downto 0);
+signal ram_dout_sdram : STD_LOGIC_VECTOR(7 downto 0);
 signal ram_we: std_logic;
 signal ram_oe: std_logic; 
 
@@ -205,6 +216,8 @@ signal fdc_drv_on : std_logic;
 signal fdc_reset : std_logic;
 signal wait_cnt : std_logic_vector(21 downto 0) := (others => '0');
 signal cpuwait : std_logic;
+signal cpuwait_c : std_logic;   -- WAIT_n before the register stage used with EXT_RAM
+signal wait_r : std_logic := '1';
 signal waiting : std_logic;
 
 begin
@@ -264,7 +277,18 @@ begin
   -- wait states: a data register access (F3) holds the CPU until DRQ or INTRQ when F4 bit 6 is set.
   -- A 100 ms timeout releases a stuck CPU.
   waiting <= '1' when f4(6)='1' and f3sel='1' and (ior='0' or iow='0') and fdc_drq='0' and fdc_intrq='0' else '0';
-  cpuwait <= '0' when waiting='1' and wait_cnt(21)='0' else '1';
+  cpuwait_c <= '0' when (waiting='1' and wait_cnt(21)='0') or ext_ram_wait='1' else '1';
+
+  -- EXT_RAM (slower FPGAs): WAIT_n comes from a register that only changes late in the CPU's
+  -- enable period (clk42div 6 and 16, the Z80 samples it on the enables at 0 and, in turbo, 10).
+  -- Its long paths into the T80 then have several clocks to settle.
+  process(clk42m)
+  begin
+    if rising_edge(clk42m) then
+      if clk42div = 6 or clk42div = 16 then wait_r <= cpuwait_c; end if;
+    end if;
+  end process;
+  cpuwait <= wait_r when EXT_RAM else cpuwait_c;
 
   -- IM 1 timer interrupt and NMI: masked latches, active low
   cpuint <= '0' when (intstat and intmask) /= x"00" else '1';
@@ -403,6 +427,7 @@ begin
 	 "111110111110000000" when "1110",
 	 "111110111110111110" when others;
 
+  sdram_gen : if not EXT_RAM generate
   sdram_inst : sdram
     port map( sd_data => SDRAM_DQ,
               sd_addr => SDRAM_A,
@@ -418,8 +443,19 @@ begin
                  addr => ram_addr,
                    we => ram_we,
                    oe => ram_oe,
-                 dout => ram_dout
+                 dout => ram_dout_sdram
     ); 	
+  end generate;
+  sdram_off : if EXT_RAM generate
+    SDRAM_nCS <= '1'; SDRAM_A <= (others => '0'); SDRAM_nWE <= '1'; SDRAM_nCAS <= '1';
+    SDRAM_nRAS <= '1'; SDRAM_BA <= "00"; SDRAM_DQ <= (others => 'Z'); sdram_dqm <= "11";
+    ram_dout_sdram <= x"ff";
+  end generate;
+  ext_ram_addr <= cpua;
+  ext_ram_rd   <= ramrd when EXT_RAM else '0';
+  ext_ram_wr   <= ramwr when EXT_RAM else '0';
+  ext_ram_din  <= cpudo;
+  ram_dout     <= ext_ram_dout when EXT_RAM else ram_dout_sdram;
   --ram_addr <= "000000000" & cpua when dn_go='0' else dn_addr_r; 
   ram_din <= cpudo when dn_go='0' else dn_data_r;
   ram_we <= ((not memw) and (cpua(15) or cpua(14))) when dn_go='0' else dn_wr_r; 

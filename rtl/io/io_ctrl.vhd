@@ -36,6 +36,9 @@ use work.io_fw_pkg.all;
 use work.cp300_roms_pkg.CHARGEN_900_65;
 
 entity io_ctrl is
+  generic (
+    CPU_HALF : boolean := false   -- true: the helper CPU gets every second clock (slower FPGAs)
+  );
   port (
     clk       : in  std_logic;                       -- 42 MHz
     reset     : in  std_logic;                       -- active high
@@ -83,7 +86,7 @@ architecture rtl of io_ctrl is
   type ram_t is array (0 to 8191) of std_logic_vector(7 downto 0);
   type fifo_t is array (0 to 15) of std_logic_vector(7 downto 0);
 
-  signal cen    : std_logic;
+  signal cen    : std_logic := '0';
 
   signal a      : std_logic_vector(15 downto 0);
   signal di, cpu_do: std_logic_vector(7 downto 0);
@@ -151,7 +154,17 @@ begin
 
   -- The CPU runs at the full 42 MHz: the design meets timing at that clock anyway (the enable only
   -- gates registers, it adds no slower paths). Memory is synchronous, one clock of latency.
-  cen <= '1';
+  gen_full : if not CPU_HALF generate
+    cen <= '1';
+  end generate;
+  gen_half : if CPU_HALF generate
+    process(clk)
+    begin
+      if rising_edge(clk) then
+        cen <= not cen;
+      end if;
+    end process;
+  end generate;
 
   cpu : entity work.T80s
     port map (
