@@ -37,6 +37,7 @@ begin
       reset     => reset,
       led       => open,
       ntsc      => '1',
+      ext_keys  => (others => '0'),
       cass_in   => '0',
       cass_out  => open,
       fdc_svc_rd => open, fdc_svc_wr => open, fdc_svc_ra => open, fdc_svc_track => open,

@@ -53,7 +53,7 @@ begin
 
   core : entity work.ht1080z
     port map (
-      clk42m => clk, pllLocked => '1', reset => core_reset, led => open, ntsc => '1',
+      clk42m => clk, pllLocked => '1', reset => core_reset, led => open, ntsc => '1', ext_keys => (others => '0'),
       cass_in => '0', cass_out => open, turbo => '1',
       fdc_svc_rd => fdc_rd, fdc_svc_wr => fdc_wr, fdc_svc_ra => fdc_ra, fdc_svc_track => fdc_track,
       fdc_svc_trkreg => fdc_trkreg, fdc_svc_sector => fdc_sector, fdc_svc_dam => fdc_dam,

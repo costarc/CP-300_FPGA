@@ -6,7 +6,7 @@
 #   roms      python tools/mkroms.py          roms/*.BIN -> roms/cp300_roms_pkg.vhd
 #   firmware  firmware/build.sh               IO controller C code -> rtl/io/io_fw_pkg.vhd (SDCC 4.6)
 #   fpga      quartus_sh --flow compile       syn/de0/output_files/cp300_de0.sof and cp300_de0.pof
-#   test      the PC tests (disk converter, FAT code, DMK reader)
+#   test      the PC tests (disk converter, FAT code, keyboard matrix scanner)
 #
 # Tools: Python 3, SDCC 4.6 (SDCC_BIN=<dir> if it is not in C:/Apps/SDCC/bin), Quartus II 13.0sp1
 # (QUARTUS_BIN=<dir> if quartus_sh is not on the PATH), gcc for the host tests.
@@ -61,6 +61,7 @@ for step in $steps; do
       else
         echo "gcc not found: skipping the FAT test"
       fi
+      if command -v ghdl >/dev/null 2>&1; then sh sim/run_kbd.sh 2>&1 | grep "all tests passed"; else echo "ghdl not found: skipping the keyboard matrix test"; fi
       echo "(tools/test_dmk.py checks the DMK reader on real images: python tools/test_dmk.py a.dmk b.dmk)"
       ;;
     *)

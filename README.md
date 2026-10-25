@@ -10,7 +10,7 @@ It runs the original CP-300 ROM and boots TRS-80 Model III disk operating system
 | ROM | the four CP-300 2732 EPROMs and the 900-65 character generator (you supply the dumps, see [roms/README.md](roms/README.md)) |
 | Video | 64 x 16 text, 32-column mode, graphic blocks, kana set; 31 kHz VGA through the MiST scandoubler |
 | Disks | WD1793 floppy controller, 4 drives, **DMK** images on the SD card, read and write |
-| Interface | on-screen menu (F12), SD card (FAT16/FAT32, SPI), PS/2 keyboard, RS-232 |
+| Interface | on-screen menu (F12), SD card (FAT16/FAT32, SPI), PS/2 keyboard and the original CP-300 keyboard matrix, RS-232 |
 
 There was no existing Model III or CP-300 core, so this starts from the HT1080Z core ([mist-devel/ht1080z](https://github.com/mist-devel/ht1080z), a TRS-80 Model I for MiST) and converts it step by step. [docs/design-notes.md](docs/design-notes.md) has the reasoning and the Model III changes.
 
@@ -26,7 +26,7 @@ Works on a DE0: the ROM boots, the menu shows on the VGA picture, and TRSDOS 1.3
 | Floppy controller WD1793, DMK images, read and write | done (no formatting: READ/WRITE TRACK) |
 | Cassette (`.CAS` files from the SD card, record) | not started |
 | Hard disk (FreHD-compatible WD1010 at C8-CF) | not started |
-| Original CP-300 keyboard on a GPIO header | not started |
+| Original CP-300 keyboard matrix on the GPIO header (3.3 V) | done in the design and in simulation, [not yet tested on a real keyboard](#original-cp-300-keyboard) |
 | Sound | none (the HT1080Z sound chip was removed; only the tape port speaker bit remains) |
 
 Resources: 7,359 of 15,408 logic elements (48%), 430,208 of 516,096 memory bits (83%), timing met at 42 MHz.
@@ -87,6 +87,7 @@ To run a BASIC program from a disk with TRSDOS 1.3: at `TRSDOS Ready` type `BASI
 | LEDG0 | CPU running (out of reset) |
 | LEDG8:1 | IO controller: after start-up b0 card found, b1 `/CP300` found, b2 `CP300.CFG` found, b7:3 error code; then the last raw PS/2 byte |
 | LEDG9 | PLL locked |
+| GPIO0 J4 pins 22-40 | original CP-300 keyboard matrix, 3.3 V (see [Original CP-300 keyboard](#original-cp-300-keyboard)) |
 | VGA | 31 kHz through the MiST scandoubler |
 | PS/2 | keyboard |
 | RS-232 | TRS-80 RS-232 at ports E8-EA, 9600 8N1 |
@@ -94,6 +95,43 @@ To run a BASIC program from a disk with TRSDOS 1.3: at `TRSDOS Ready` type `BASI
 | GPIO0_D[1] | cassette in (reserved) |
 
 The DE0's SD slot is used in SPI mode, 3.3 V (CLK Y21, CMD/MOSI Y22, DAT0/MISO AA22, DAT3/CS W21, WP W20).
+
+### Original CP-300 keyboard
+
+The original keyboard is a passive 8 x 8 switch matrix (no diodes). On the CP-300 board the row lines A0-A7 are driven by inverters from the CPU address lines and the column lines C0-C7 are pulled up to 5 V and read onto the data bus (D0-D7). The FPGA does that job itself, at **3.3 V**: it drives the eight row lines (low = selected, idle high), reads the eight column lines (pulled up to 3.3 V, a key pulls its column low), debounces about 5 ms and merges the keys with the PS/2 keyboard. Both keyboards work at the same time. **Never connect 5 V to these pins.**
+
+Connector: the last nine pin pairs of the DE0 GPIO0 header (J4, pins 23-40, a 2 x 9 block), so one 18-pin ribbon plug is enough. Columns are on the odd pins, rows on the even pins, with 3.3 V and GND in the middle.
+
+| J4 pin | Signal | FPGA pin | | J4 pin | Signal | FPGA pin |
+|---|---|---|---|---|---|---|
+| 23 | column C0 | V14 | | 24 | row A0 | U14 |
+| 25 | column C1 | Y13 | | 26 | row A1 | W13 |
+| 27 | column C2 | U13 | | 28 | row A2 | V12 |
+| 29 | **3.3 V** (pull-up supply) | | | 30 | **GND** | |
+| 31 | column C3 | R10 | | 32 | row A3 | V11 |
+| 33 | column C4 | Y10 | | 34 | row A4 | W10 |
+| 35 | column C5 | T8 | | 36 | row A5 | V8 |
+| 37 | column C6 | W7 | | 38 | row A6 | W6 |
+| 39 | column C7 | V5 | | 40 | row A7 | U7 |
+
+Optional: pin 22 (GPIO0_D15, AA4) is a reset input, low = pressed, with a pull-up. Connect the keyboard's reset key(s) between it and GND; it acts like BUTTON0.
+
+The columns have the FPGA's weak internal pull-ups (about 25 kOhm), which is enough for a short cable. For a longer cable add a 4.7 kOhm to 10 kOhm resistor from each column to the 3.3 V on pin 29. The row and column resistors and inverters on the CP-300 board are not used; wire only the keyboard itself (the key matrix) to the plug.
+
+The keys (row = address line, column = data bit, as printed on the schematic):
+
+| Row | C0 | C1 | C2 | C3 | C4 | C5 | C6 | C7 |
+|---|---|---|---|---|---|---|---|---|
+| A0 | @ | A | B | C | D | E | F | G |
+| A1 | H | I | J | K | L | M | N | O |
+| A2 | P | Q | R | S | T | U | V | W |
+| A3 | X | Y | Z | | | | | |
+| A4 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| A5 | 8 | 9 | : | ; | , | - | . | / |
+| A6 | ENTER | CLEAR | BREAK | UP | DOWN | LEFT | RIGHT | SPACE |
+| A7 | L SHIFT | R SHIFT | | | | | | |
+
+The on-screen menu is opened with F12 on the PS/2 keyboard; the original keyboard has no F12 key, so keep a PS/2 keyboard connected to use the menu.
 
 ## Building from the command line
 
@@ -154,6 +192,7 @@ All simulations use GHDL and write their results to `sim/out/` (not committed). 
 | `sh sim/run.sh 1500ms` | the core alone: the ROM boots to `Cass?` (the screen of the last frame is printed) |
 | `sh sim/run_io.sh` | the IO controller with its real firmware, an SD card model and PS/2 keys; writes the menu as `sim/out/osd_<n>.pbm` pictures |
 | `sh sim/run_sys.sh 600ms` | the whole machine boots a DMK disk from the SD card model; the boot sector prints `BOOT OK`, then `FDC OK` after a seek, read, write and read-back test |
+| `sh sim/run_kbd.sh` | the original keyboard matrix scanner against a model of the switch matrix: scanning, two and three keys at once, debounce, and what the CPU reads at 3800h with the PS/2 keyboard merged |
 | `./build.sh test` | PC tests: the DMK converter and the FAT code |
 | `python tools/test_dmk.py a.dmk b.dmk` | checks the firmware's DMK reader against the converter's own decoder on real images (needs gcc) |
 
@@ -167,6 +206,7 @@ rtl/de0/         DE0 top level, 50 -> 42 MHz PLL
 rtl/cp300/       the system ROM (four 2732 EPROM images)
 rtl/ht1080z/     the core: Z80 system, video, keyboard (vendored from mist-devel/ht1080z, modified)
 rtl/fdc/         WD1793 floppy controller (VHDL)
+rtl/kbd/         scanner for the original CP-300 keyboard matrix
 rtl/io/          IO controller: a second Z80 with SD card, OSD menu, PS/2 and the floppy sector service
 rtl/T80/         submodule: mist-devel/T80 (Z80 core)
 rtl/mist-modules submodule: mist-devel/mist-modules (scandoubler, OSD)

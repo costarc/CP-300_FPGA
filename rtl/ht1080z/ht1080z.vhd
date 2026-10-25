@@ -54,6 +54,7 @@ entity ht1080z is
             reset : in  STD_LOGIC;
               led : out STD_LOGIC;
              ntsc : in  STD_LOGIC;
+        ext_keys : in  std_logic_vector(63 downto 0);   -- original keyboard matrix, 8 * row + column
             turbo : in  STD_LOGIC;
           cass_in : in  STD_LOGIC;
          cass_out : out std_logic_vector(1 downto 0);
@@ -366,6 +367,7 @@ begin
 		SWRES => swres,
 	     CLK => clk42m,
 		    A => cpua(7 downto 0),
+			 EXT => ext_keys,
 		 DOUT => kbdout,
 		 PAGE => page,
 		 VCUT => open,

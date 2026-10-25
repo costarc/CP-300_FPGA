@@ -18,6 +18,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/de0/cp300_de0.sv
 set_global_assignment -name VHDL_FILE ../../roms/cp300_roms_pkg.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/de0/pll_de0.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/kbd/matrix_kbd.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/fdc/wd1793.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/io/io_fw_pkg.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/io/io_ctrl.vhd
@@ -228,3 +229,41 @@ set_global_assignment -name LAST_QUARTUS_VERSION "13.0 SP1"
 set_global_assignment -name CYCLONEIII_CONFIGURATION_SCHEME "ACTIVE SERIAL"
 set_global_assignment -name USE_CONFIGURATION_DEVICE ON
 set_global_assignment -name CYCLONEIII_CONFIGURATION_DEVICE EPCS4
+
+# Original CP-300 keyboard on GPIO0 (J4) pins 22-40: columns on the odd pins, rows on the even pins
+set_location_assignment PIN_V14 -to KBD_COL[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[0]
+set_location_assignment PIN_Y13 -to KBD_COL[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[1]
+set_location_assignment PIN_U13 -to KBD_COL[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[2]
+set_location_assignment PIN_R10 -to KBD_COL[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[3]
+set_location_assignment PIN_Y10 -to KBD_COL[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[4]
+set_location_assignment PIN_T8 -to KBD_COL[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[5]
+set_location_assignment PIN_W7 -to KBD_COL[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[6]
+set_location_assignment PIN_V5 -to KBD_COL[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_COL[7]
+set_location_assignment PIN_U14 -to KBD_ROW[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[0]
+set_location_assignment PIN_W13 -to KBD_ROW[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[1]
+set_location_assignment PIN_V12 -to KBD_ROW[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[2]
+set_location_assignment PIN_V11 -to KBD_ROW[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[3]
+set_location_assignment PIN_W10 -to KBD_ROW[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[4]
+set_location_assignment PIN_V8 -to KBD_ROW[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[5]
+set_location_assignment PIN_W6 -to KBD_ROW[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[6]
+set_location_assignment PIN_U7 -to KBD_ROW[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_ROW[7]
+set_location_assignment PIN_AA4 -to KBD_RESET_N
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KBD_RESET_N
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to KBD_COL[*]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to KBD_RESET_N

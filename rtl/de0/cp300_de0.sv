@@ -38,6 +38,11 @@ module cp300_de0 (
 	input         PS2_KBCLK,
 	input         PS2_KBDAT,
 
+	// original CP-300 keyboard (GPIO0 header J4 pins 22-40, see README): 3.3 V logic
+	output  [7:0] KBD_ROW,      // row lines A0-A7, low = selected
+	input   [7:0] KBD_COL,      // column lines C0-C7, pulled up, a key pulls its column low
+	input         KBD_RESET_N,  // optional: the keyboard's reset key(s), low = pressed
+
 	output        SD_CLK,
 	output        SD_CMD,     // MOSI in SPI mode
 	input         SD_DAT,     // DAT0 = MISO
@@ -90,13 +95,14 @@ end
 
 reg reset = 1;
 reg io_reset = 1;
-reg [1:0] button_s;
+reg [1:0] button_s, kbdres_s;
 wire core_rst, menu_open;
 wire [7:0] io_dbg;
 always @(posedge clk42) begin
 	button_s <= {button_s[0], BUTTON[0]};
+	kbdres_s <= {kbdres_s[0], KBD_RESET_N};
 	io_reset <= ~button_s[1] | ~por_done;
-	reset <= ~button_s[1] | ~por_done | core_rst;
+	reset <= ~button_s[1] | ~kbdres_s[1] | ~por_done | core_rst;
 end
 
 wire [17:0] rgb;
@@ -106,6 +112,15 @@ wire        ledb;
 reg   [1:0] cass_in;
 wire  [1:0] cass_out;
 wire        uart_tx, uart_rts;
+
+// original keyboard scanner
+wire [63:0] ext_keys;
+matrix_kbd matrix_kbd (
+	.clk(clk42),
+	.row_n(KBD_ROW),
+	.col_n(KBD_COL),
+	.keys(ext_keys)
+);
 
 // floppy controller <-> IO controller
 wire  [7:0] fdc_track, fdc_trkreg, fdc_sector;
@@ -131,6 +146,7 @@ ht1080z ht1080z (
 	.led(ledb),
 	.ntsc(ntsc),
 	.turbo(turbo),
+	.ext_keys(ext_keys),
 	.cass_in(cass_in[1]),
 	.cass_out(cass_out),
 

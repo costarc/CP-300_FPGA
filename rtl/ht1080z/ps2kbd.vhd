@@ -53,6 +53,7 @@ entity ps2kbd is
 		SWRES : out STD_LOGIC;
 	     CLK : in  STD_LOGIC;
 		    A : in  STD_LOGIC_VECTOR(7 downto 0);
+		 EXT : in  STD_LOGIC_VECTOR(63 downto 0);   -- original keyboard: EXT(8*row+column) = key down
 		 DOUT : out STD_LOGIC_VECTOR(7 downto 0);
 		 PAGE : out STD_LOGIC;		 
 		 VCUT : out STD_LOGIC;
@@ -295,14 +296,15 @@ begin
   VCUT <= vcutReg;
   PAGE <= pageReg;
   
-  keysout(0) <= keybits(0) when A(0)='1' else x"00";
-  keysout(1) <= keybits(1) when A(1)='1' else x"00";
-  keysout(2) <= keybits(2) when A(2)='1' else x"00";
-  keysout(3) <= keybits(3) when A(3)='1' else x"00";
-  keysout(4) <= keybits(4) when A(4)='1' else x"00";
-  keysout(5) <= keybits(5) when A(5)='1' else x"00";
-  keysout(6) <= keybits(6) when A(6)='1' else x"00";
-  keysout(7) <= keybits(7) when A(7)='1' else x"00";
+  -- the PS/2 keys and the physical matrix are one matrix: a key down on either counts
+  keysout(0) <= (keybits(0) or EXT(7 downto 0)) when A(0)='1' else x"00";
+  keysout(1) <= (keybits(1) or EXT(15 downto 8)) when A(1)='1' else x"00";
+  keysout(2) <= (keybits(2) or EXT(23 downto 16)) when A(2)='1' else x"00";
+  keysout(3) <= (keybits(3) or EXT(31 downto 24)) when A(3)='1' else x"00";
+  keysout(4) <= (keybits(4) or EXT(39 downto 32)) when A(4)='1' else x"00";
+  keysout(5) <= (keybits(5) or EXT(47 downto 40)) when A(5)='1' else x"00";
+  keysout(6) <= (keybits(6) or EXT(55 downto 48)) when A(6)='1' else x"00";
+  keysout(7) <= (keybits(7) or EXT(63 downto 56)) when A(7)='1' else x"00";
   DOUT <= keysout(0) or keysout(1) or keysout(2) or keysout(3) or keysout(4) or keysout(5) or keysout(6) or keysout(7);
 
   INKP <= inkpulse;
