@@ -1,6 +1,6 @@
 // Stand-ins for the VHDL entities and megafunctions, only so iverilog can elaborate core_top.v and
 // catch port and declaration errors (syn/analogue/sim/lint.sh). They do nothing.
-module ht1080z #(parameter EXT_RAM = 1'b0) (
+module ht1080z_ext (
 	input clk42m, input pllLocked, input reset, output led, input ntsc, input [63:0] ext_keys, input turbo,
 	input cass_in, output [1:0] cass_out,
 	output fdc_svc_rd, output fdc_svc_wr, output fdc_svc_ra, output [7:0] fdc_svc_track, output [7:0] fdc_svc_trkreg,
@@ -15,7 +15,8 @@ module ht1080z #(parameter EXT_RAM = 1'b0) (
 	output [15:0] ext_ram_addr, output ext_ram_rd, output ext_ram_wr, output [7:0] ext_ram_din,
 	input [7:0] ext_ram_dout, input ext_ram_wait,
 	output SDRAM_nCS, inout [15:0] SDRAM_DQ, output [12:0] SDRAM_A, output SDRAM_DQMH, output SDRAM_DQML,
-	output SDRAM_nWE, output SDRAM_nCAS, output SDRAM_nRAS, output [1:0] SDRAM_BA, output SDRAM_CKE);
+	output SDRAM_nWE, output SDRAM_nCAS, output SDRAM_nRAS, output [1:0] SDRAM_BA, output SDRAM_CKE,
+	input rl_clk, input rl_we, input [12:0] rl_waddr, input [31:0] rl_wdata);
 endmodule
 
 module io_ctrl_pocket #(parameter CPU_HALF = 1'b1) (
@@ -43,7 +44,8 @@ module apf_dataslot (
 	output [3:0] present, output [3:0] changed, input [3:0] chg_clr, output scan_valid);
 endmodule
 
-module osd_font (input clk, input [10:0] addr, output reg [7:0] dout);
+module osd_font (input clk, input [10:0] addr, output reg [7:0] dout,
+	input rl_clk, input rl_we, input [12:0] rl_waddr, input [31:0] rl_wdata);
 	always @(posedge clk) dout <= 8'h00;
 endmodule
 

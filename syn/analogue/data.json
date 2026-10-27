@@ -8,7 +8,10 @@
                 "required": false,
                 "deferload": true,
                 "parameters": "0x201",
-                "extensions": ["dsk", "dmk"],
+                "extensions": [
+                    "dsk",
+                    "dmk"
+                ],
                 "size_maximum": "0x1000000",
                 "address": "0x00000000"
             },
@@ -18,7 +21,10 @@
                 "required": false,
                 "deferload": true,
                 "parameters": "0x201",
-                "extensions": ["dsk", "dmk"],
+                "extensions": [
+                    "dsk",
+                    "dmk"
+                ],
                 "size_maximum": "0x1000000",
                 "address": "0x00000000"
             },
@@ -28,7 +34,10 @@
                 "required": false,
                 "deferload": true,
                 "parameters": "0x201",
-                "extensions": ["dsk", "dmk"],
+                "extensions": [
+                    "dsk",
+                    "dmk"
+                ],
                 "size_maximum": "0x1000000",
                 "address": "0x00000000"
             },
@@ -38,9 +47,38 @@
                 "required": false,
                 "deferload": true,
                 "parameters": "0x201",
-                "extensions": ["dsk", "dmk"],
+                "extensions": [
+                    "dsk",
+                    "dmk"
+                ],
                 "size_maximum": "0x1000000",
                 "address": "0x00000000"
+            },
+            {
+                "name": "System ROM (16 KB)",
+                "id": 4,
+                "required": true,
+                "parameters": "0x200",
+                "filename": "cp300.rom",
+                "extensions": [
+                    "rom",
+                    "bin"
+                ],
+                "size_maximum": "0x4000",
+                "address": "0x50000000"
+            },
+            {
+                "name": "Character ROM (2 KB)",
+                "id": 5,
+                "required": true,
+                "parameters": "0x200",
+                "filename": "cp300chr.rom",
+                "extensions": [
+                    "rom",
+                    "bin"
+                ],
+                "size_maximum": "0x800",
+                "address": "0x50004000"
             }
         ]
     }

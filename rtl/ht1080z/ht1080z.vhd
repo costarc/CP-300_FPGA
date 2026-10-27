@@ -49,7 +49,8 @@ use work.sim_trace_cfg.all;
 -- synthesis translate_on
 
 entity ht1080z is
-    generic ( EXT_RAM : boolean := false );  -- true: Z80 RAM is outside (ext_ram_*), no SDRAM controller
+    generic ( EXT_RAM : boolean := false;    -- true: Z80 RAM is outside (ext_ram_*), no SDRAM controller
+              RUNTIME_ROM : boolean := false ); -- true: system ROM and character generator are RAMs loaded through rl_*
     Port ( clk42m : in  STD_LOGIC;
         pllLocked : in  STD_LOGIC;
             reset : in  STD_LOGIC;
@@ -130,8 +131,13 @@ entity ht1080z is
 		 SDRAM_nCAS : out std_logic; -- SDRAM Column Address Strobe
 		 SDRAM_nRAS : out std_logic; -- SDRAM Row Address Strobe
 		   SDRAM_BA : out std_logic_vector(1 downto 0); -- SDRAM Bank Address
-		  SDRAM_CKE : out std_logic  -- SDRAM Clock Enable			 
+		  SDRAM_CKE : out std_logic;  -- SDRAM Clock Enable
   			  			  
+         -- runtime ROM loader (RUNTIME_ROM): 32-bit words, see cp300_rom
+           rl_clk : in  std_logic := '0';
+            rl_we : in  std_logic := '0';
+         rl_waddr : in  std_logic_vector(12 downto 0) := (others => '0');
+         rl_wdata : in  std_logic_vector(31 downto 0) := (others => '0')
     ); 
 end ht1080z;
 
@@ -378,14 +384,17 @@ begin
   vdata <= cpudo;
 
   rom : entity work.cp300_rom
+    generic map (RUNTIME_ROM => RUNTIME_ROM)
     port map (
       clk  => clk42m,
       a    => cpua(13 downto 0),
-      dout => romdo
+      dout => romdo,
+      rl_clk => rl_clk, rl_we => rl_we, rl_waddr => rl_waddr, rl_wdata => rl_wdata
     );
 
   -- video ram at 0x3C00
   video : entity work.videoctrl 
+    generic map (RUNTIME_ROM => RUNTIME_ROM)
     port map (   
 	  reset => autores, --swres and pllLocked,
 	  clk42 => clk42m,
@@ -412,7 +421,8 @@ begin
 	  hsync => hs,
 	  vsync => vs,
 	  hblank=> hb,
-	  vblank=> vb
+	  vblank=> vb,
+	  rl_clk => rl_clk, rl_we => rl_we, rl_waddr => rl_waddr, rl_wdata => rl_wdata
    );  
 
   kbd : entity work.ps2kbd 

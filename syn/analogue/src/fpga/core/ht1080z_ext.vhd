@@ -1,6 +1,6 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
--- Verilog cannot drive ht1080z's boolean generic: this wrapper fixes EXT_RAM = true
+-- Verilog cannot drive ht1080z's boolean generics: this wrapper fixes EXT_RAM = true and RUNTIME_ROM = true
 entity ht1080z_ext is
   port (
 clk42m : in  STD_LOGIC;
@@ -83,15 +83,18 @@ clk42m : in  STD_LOGIC;
 		 SDRAM_nCAS : out std_logic; 
 		 SDRAM_nRAS : out std_logic; 
 		   SDRAM_BA : out std_logic_vector(1 downto 0); 
-		  SDRAM_CKE : out std_logic  
-  			  			  
-    
+		  SDRAM_CKE : out std_logic;
+
+           rl_clk : in  std_logic;
+            rl_we : in  std_logic;
+         rl_waddr : in  std_logic_vector(12 downto 0);
+         rl_wdata : in  std_logic_vector(31 downto 0)
   );
 end ht1080z_ext;
 
 architecture rtl of ht1080z_ext is
 begin
-  u : entity work.ht1080z generic map (EXT_RAM => true) port map (
+  u : entity work.ht1080z generic map (EXT_RAM => true, RUNTIME_ROM => true) port map (
     clk42m => clk42m,
     pllLocked => pllLocked,
     reset => reset,
@@ -160,6 +163,10 @@ begin
     SDRAM_nCAS => SDRAM_nCAS,
     SDRAM_nRAS => SDRAM_nRAS,
     SDRAM_BA => SDRAM_BA,
-    SDRAM_CKE => SDRAM_CKE
+    SDRAM_CKE => SDRAM_CKE,
+    rl_clk => rl_clk,
+    rl_we => rl_we,
+    rl_waddr => rl_waddr,
+    rl_wdata => rl_wdata
   );
 end rtl;

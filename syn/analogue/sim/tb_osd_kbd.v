@@ -17,7 +17,8 @@ module tb_osd_kbd;
 	          .CELLS_FILE("../../src/fpga/core/osd_kbd_cells.hex"),
 	          .NAV_FILE("../../src/fpga/core/osd_kbd_nav.hex")) dut (
 		.clk(clk), .reset(reset), .pad(pad), .pad_keys_en(1'b1), .px(px), .py(py),
-		.ovl_on(ovl_on), .ovl_rgb(ovl_rgb), .keys(keys), .open_o(open_o));
+		.ovl_on(ovl_on), .ovl_rgb(ovl_rgb), .keys(keys), .open_o(open_o),
+		.rl_clk(1'b0), .rl_we(1'b0), .rl_waddr(13'd0), .rl_wdata(32'd0));
 
 	always #11.905 clk = ~clk;
 

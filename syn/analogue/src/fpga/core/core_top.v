@@ -323,6 +323,7 @@ assign vpll_feed = 1'bZ;
 //   2xxxxxxx  w  track RAM, written by a "data slot read" (apf_dataslot, up to 16 KB)
 //   3xxxxxxx  r  track RAM, read by a "data slot write"
 //   40000000+ rw core settings, see interact.json (one 32-bit register each)
+//   5xxxxxxx  w  ROM images (system ROM, character generator), see below
 //   F8xxxxxx     framework commands (core_bridge_cmd)
 //
 // Bridge write data is broadcast to every device; reads are muxed.
@@ -592,6 +593,18 @@ wire [15:0] pad;
 synch_3 #(.WIDTH(16)) s_pad (.i(cont1_key[15:0]), .o(pad), .clk(clk42), .rise(), .fall());
 
 
+// ------------------------------------------------------------------ ROMs from the SD card
+//
+// The system ROM and the character generator are data slots 4 and 5 (data.json), loaded by the
+// framework before the core starts: the bridge writes them at 50000000h (system ROM, 16 KB) and
+// 50004000h (character generator, 2 KB), four bytes per write, first byte in bits 31:24. They go
+// straight into the RAMs that stand for the ROMs (cp300_rom, videoctrl, osd_font), written with
+// clk_74a; no ROM is part of the bitstream.
+
+wire        rl_we    = bridge_wr && (bridge_addr[31:28] == 4'h5);
+wire [12:0] rl_waddr = bridge_addr[14:2];
+wire [31:0] rl_wdata = bridge_wr_data;
+
 // ------------------------------------------------------------------ the CP-300
 //
 // Z80 RAM (4000-FFFF) is a 64 KB block RAM; the access takes one clock, far less than a Z80 T state
@@ -710,7 +723,12 @@ ht1080z_ext cp300 (
     .SDRAM_nCAS(sd_nCAS),
     .SDRAM_nRAS(sd_nRAS),
     .SDRAM_BA(sd_ba),
-    .SDRAM_CKE(sd_cke)
+    .SDRAM_CKE(sd_cke),
+
+    .rl_clk(clk_74a),
+    .rl_we(rl_we),
+    .rl_waddr(rl_waddr),
+    .rl_wdata(rl_wdata)
 );
 
 
@@ -874,7 +892,11 @@ osd_kbd kbd (
     .ovl_on(ovl_on),
     .ovl_rgb(ovl_rgb),
     .keys(keys),
-    .open_o(kbd_open)
+    .open_o(kbd_open),
+    .rl_clk(clk_74a),
+    .rl_we(rl_we),
+    .rl_waddr(rl_waddr),
+    .rl_wdata(rl_wdata)
 );
 
 reg [23:0] vid_rgb_q;

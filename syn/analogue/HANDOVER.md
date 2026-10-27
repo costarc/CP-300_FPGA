@@ -14,7 +14,7 @@ Compiles and packages: Quartus Prime Lite 25.1 at `C:\altera_lite\25.1std` (`qua
 | Disks as APF data slots | `apf_dataslot.vhd` (target read/write of up to 16 KB, slot size table scan, the 16 KB track RAM built from four `trk_ram.vhd` lanes), `io_ctrl_pocket.vhd` (helper Z80, port map in its header; the track RAM is at 8000h-BFFFh), `firmware/pocket` (reuses `firmware/dmk.c`, built with `DMK_SPAN`) |
 | `ht1080z_ext.vhd` | wrapper: Verilog cannot drive the boolean generic `EXT_RAM`, so this fixes it to true |
 | Video | `pocket_video.v`: native 10.5 MHz picture, VS/HS pulses, DE over 512x192 |
-| OSD keyboard | `osd_kbd.v`, layout from `tools/mkoskbd.py` (`osd_kbd_*.hex`), font via `osd_font.vhd` from the CP-300 chargen |
+| OSD keyboard | `osd_kbd.v`, layout from `tools/mkoskbd.py` (`osd_kbd_*.hex`), font via `osd_font.vhd` |
 | Audio | `sound_i2s.sv` (agg23, MIT); port FF speaker bit, centred, scaled |
 | Definition files, packaging | `core.json data.json interact.json video.json input.json`, `package.py` (bit-reverses the rbf) |
 
@@ -34,7 +34,7 @@ Not done: the helper CPU still runs at half clock where `CPU_HALF` is set (timin
 - Slots 0-3 are `deferload`, user-reloadable, bit 9 (persist filename). Interact defaults must match the register reset values in `core_top.v`.
 - The IO controller holds the CP-300 in reset until the firmware has scanned the slot table and mounted; the firmware takes ~12 ms (sim) before releasing.
 - Keyboard keys use the same 8x8 `ext_keys` matrix as the DE0 (bit = 8*row+col; BREAK = 50, SHIFTs 56/57).
-- Never commit ROMs; the font comes from `roms/cp300_roms_pkg.vhd` at synthesis, and `run_osd.sh` makes `sim/out/font.hex` locally. The bitstream embeds the ROM: do not publish it.
+- **ROMs are runtime**, not in the bitstream (publish-friendly): data slots 4 (`cp300.rom`, 16 KB, bridge `50000000h`) and 5 (`cp300chr.rom`, 2 KB, `50004000h`), required, filename persisted. `RUNTIME_ROM` generic in `cp300_rom`, `videoctrl`, `ht1080z` (set by `ht1080z_ext`), RAMs written with `clk_74a` through `rl_*`; the Pocket qsf uses `core/cp300_roms_stub.vhd` instead of `roms/cp300_roms_pkg.vhd`. `tools/mkpocketrom.py` makes the files from `roms/`. Never commit or publish the ROM files; `run_osd.sh` / `run_rtrom.sh` still read `roms/` locally.
 - Only Quartus II 13.0sp1 on the machine: the Cyclone III/DE0 flow is unaffected (`firmware/dmk.h` only gained an `#ifdef POCKET`).
 
 ## Next steps

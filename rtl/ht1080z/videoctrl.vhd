@@ -53,7 +53,9 @@ entity videoctrl is
 	Generic (
 		-- CP-300: 64 x 8-dot cells = 512 active pixels in the 672-clock line
 		H_START : integer := 42+76+17;
-		V_START : integer := 2+28+((266-192)/2)+4
+		V_START : integer := 2+28+((266-192)/2)+4;
+		-- character generator in a RAM loaded through rl_* (see cp300_rom), not from cp300_roms_pkg
+		RUNTIME_ROM : boolean := false
 	 );
     Port (   
 	        reset : in  STD_LOGIC;
@@ -88,7 +90,11 @@ entity videoctrl is
            hsync : out STD_LOGIC;
            vsync : out STD_LOGIC;
           hblank : out STD_LOGIC;
-          vblank : out STD_LOGIC
+          vblank : out STD_LOGIC;
+          rl_clk   : in  STD_LOGIC := '0';
+          rl_we    : in  STD_LOGIC := '0';
+          rl_waddr : in  STD_LOGIC_VECTOR (12 downto 0) := (others => '0');
+          rl_wdata : in  STD_LOGIC_VECTOR (31 downto 0) := (others => '0')
     );
 end videoctrl;
 
@@ -232,10 +238,49 @@ end process;
 chraddr <= ("10" & chrCode(5 downto 0) & vpos(2 downto 0)) when chrCode(7 downto 6)="11" and kana='0' else
            (chrCode & vpos(2 downto 0));
 
+gen_chr_pkg : if not RUNTIME_ROM generate
+  process(clk42)
+  begin
+    if rising_edge(clk42) then
+      chrRom <= CHARGEN_900_65(conv_integer( chraddr ));
+    end if;
+  end process;
+end generate;
+
+gen_chr_rt : if RUNTIME_ROM generate
+  type clane_t is array (0 to 511) of std_logic_vector(7 downto 0);
+  signal c0, c1, c2, c3 : clane_t := (others => (others => '0'));
+  signal q0, q1, q2, q3 : std_logic_vector(7 downto 0) := (others => '0');
+  signal clane : std_logic_vector(1 downto 0) := "00";
+begin
+  -- rl_waddr(12) = 1: character generator, 512 words
+  process(rl_clk)
+  begin
+    if rising_edge(rl_clk) then
+      if rl_we = '1' and rl_waddr(12) = '1' then
+        c0(conv_integer(rl_waddr(8 downto 0))) <= rl_wdata(31 downto 24);
+        c1(conv_integer(rl_waddr(8 downto 0))) <= rl_wdata(23 downto 16);
+        c2(conv_integer(rl_waddr(8 downto 0))) <= rl_wdata(15 downto 8);
+        c3(conv_integer(rl_waddr(8 downto 0))) <= rl_wdata(7 downto 0);
+      end if;
+    end if;
+  end process;
+  process(clk42)
+  begin
+    if rising_edge(clk42) then
+      q0 <= c0(conv_integer(chraddr(10 downto 2)));
+      q1 <= c1(conv_integer(chraddr(10 downto 2)));
+      q2 <= c2(conv_integer(chraddr(10 downto 2)));
+      q3 <= c3(conv_integer(chraddr(10 downto 2)));
+      clane <= chraddr(1 downto 0);
+    end if;
+  end process;
+  with clane select chrRom <= q0 when "00", q1 when "01", q2 when "10", q3 when others;
+end generate;
+
 process(clk42)
 begin
   if rising_edge(clk42) then
-	 chrRom <= CHARGEN_900_65(conv_integer( chraddr ));
 	 -- 80-BF: 2x3 graphic blocks (mux CI-58), 4 dots x 4 lines each;
 	 -- even code bits are the left block (shifted out first, MSB)
 	 case vpos(3 downto 2) is

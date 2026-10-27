@@ -16,8 +16,8 @@
 // later, whether the keyboard covers it and its colour. px/py must only change every fourth clock or
 // slower (the 10.5 MHz pixel clock enable of the core).
 //
-// Font: the CP-300 character generator through osd_font (VHDL, rtl/cp300 ROM package); a simulation
-// stand-in with the same ports is in sim/.
+// Font: a copy of the CP-300 character generator that the SD card image fills (osd_font, VHDL); a
+// simulation stand-in with the same ports is in sim/.
 //
 module osd_kbd #(
 	parameter TEXT_FILE  = "core/osd_kbd_text.hex",
@@ -37,7 +37,13 @@ module osd_kbd #(
 	output reg [23:0] ovl_rgb,
 
 	output reg [63:0] keys,
-	output reg        open_o
+	output reg        open_o,
+
+	// character generator loader (see osd_font.vhd)
+	input             rl_clk,
+	input             rl_we,
+	input      [12:0] rl_waddr,
+	input      [31:0] rl_wdata
 );
 
 // ------------------------------------------------------------------ ROMs
@@ -179,7 +185,8 @@ end
 
 // stage 2: glyph row (osd_font has one clock of latency)
 wire [7:0] glyph;
-osd_font font (.clk(clk), .addr({ch1, line1}), .dout(glyph));
+osd_font font (.clk(clk), .addr({ch1, line1}), .dout(glyph),
+	.rl_clk(rl_clk), .rl_we(rl_we), .rl_waddr(rl_waddr), .rl_wdata(rl_wdata));
 reg [7:0] cell2;
 reg [2:0] xbit2;
 reg       hdr2, on2;

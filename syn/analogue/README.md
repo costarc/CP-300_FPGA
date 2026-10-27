@@ -17,8 +17,8 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 ### First start
 
 1. Build the core ([Building](#building)) and run `python package.py`. Copy `dist-sd/Cores/` and `dist-sd/Platforms/` to the root of the Pocket's SD card.
-2. Put disk images (`.dsk` / `.dmk`, DMK format) in `Assets/cp300/common/` on the card.
-3. Start **CP-300** from the Pocket's core list. With no disk selected the CP-300 ROM shows its `Cass?` prompt: answer **A** for BASIC (the ROM takes A/B, not L/H), then ENTER at `Mem. usada?` (open the keyboard with Select to type).
+2. Put the **CP-300 ROMs** and your disk images in `Assets/cp300/common/` on the card. The ROMs are not in the core (see [ROMs](#roms)): `cp300.rom` (16 KB system ROM) and `cp300chr.rom` (2 KB character generator). Disk images are `.dsk` / `.dmk` files in DMK format.
+3. Start **CP-300** from the Pocket's core list. If a ROM file is missing the Pocket opens its file browser for it; pick the file once and it is remembered. With no disk selected the CP-300 ROM shows its `Cass?` prompt: answer **A** for BASIC (the ROM takes A/B, not L/H), then ENTER at `Mem. usada?` (open the keyboard with Select to type).
 4. To boot a disk: Analogue button, **Core Settings**, **Drive 0 (boot)**, pick the file, then **Reset CP-300**. The Pocket remembers the choice for the next start.
 5. At `TRSDOS Ready` (TRSDOS 1.3) type `BASIC`, press ENTER at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` for a file on Drive 1).
 
@@ -56,6 +56,17 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 **Troubleshooting.** Disk status shows 0 for a drive: the file is not a DMK with 256-byte sectors (convert with `tools/dsk2dmk.py`). `Diskette?` or a hang at boot: choose the file again and Reset CP-300. Disk errors under load: see *Disk speed* in the known limits.
 
+### ROMs
+
+The bitstream contains no CP-300 ROM, so the core can be published; each user supplies the ROMs, which are loaded into the core's ROM RAMs when it starts:
+
+| File (in `Assets/cp300/common/`) | Size | Content |
+|---|---|---|
+| `cp300.rom` | 16384 bytes | the system ROM, address 0000-3FFF: `900-61`..`900-64` one after the other (2732s, 4 KB each), or the 27C128 of later boards |
+| `cp300chr.rom` | 2048 bytes | the character generator `900-65` (2716) |
+
+If you have the four EPROM dumps in `roms/` (see `roms/README.md`), `python tools/mkpocketrom.py` writes both files; for a 27C128 dump use `python tools/mkpocketrom.py outdir --27c128 27C128cp300.BIN 900-65.BIN`. In *Core Settings* the two files appear as *System ROM* and *Character ROM*; the Pocket remembers the choice. Without a system ROM the screen stays black.
+
 ## How it works
 
 ```
@@ -67,7 +78,7 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
                 |        |  v        42 MHz                                   |
                 |   io_ctrl_pocket.vhd (helper Z80 + firmware/pocket, DMK)     |
                 |        |                                                     |
-                |   ht1080z.vhd + wd1793.vhd + cp300_rom  (the CP-300, shared) |
+                |   ht1080z.vhd + wd1793.vhd + RAM ROMs   (the CP-300, shared) |
                 |        |  picture / keys / audio                             |
                 |   osd_kbd.v --> picture overlay + key matrix                 |
  video, audio <-+--  video registers (clk_vid 10.5 MHz), sound_i2s.sv          |
@@ -76,6 +87,7 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 * **Core and clocks.** The same `ht1080z` / `videoctrl` / `wd1793` / T80 / CP-300 ROM files as the DE0 and Tang builds (`rtl/`), at the same 42 MHz (Z80 = 42 / 21 = 2.0 MHz; turbo 4.0). One PLL (`mf_pllbase_0002.v`, hand-edited `altera_pll` parameters) makes 42 MHz, the 10.5 MHz pixel clock and its 90 degree copy from the Pocket's 74.25 MHz; the PLL IP can be regenerated in Quartus's IP editor with the same frequencies.
 * **RAM.** The 48 KB of Z80 RAM is a 64 KB block RAM (`ram64` in `core_top.v`): no SDRAM, no waits.
+* **ROMs.** `cp300_rom` and `videoctrl` (shared with the other boards) have a `RUNTIME_ROM` generic: the system ROM and the character generator are then RAMs, written through an `rl_*` word port. `core_top.v` feeds it from the bridge: data slots 4 (system ROM, `50000000h`) and 5 (character generator, `50004000h`) are loaded by the framework before the core starts, so the four bytes of each bridge write go straight into byte-lane RAMs (written with `clk_74a`, read with the 42 MHz clock). `osd_font.vhd` keeps its own copy of the character generator from the same writes. The Pocket project compiles the shared files against an empty `cp300_roms_stub.vhd`, so no ROM content is in the project or the bitstream; `sim/run_rtrom.sh` shows the RAM version is bit-identical to the ROM version.
 * **Disks.** The DE0 build has a helper Z80 that reads DMK files from a FAT SD card. Here the card is the Pocket's, so the helper Z80 keeps its DMK code (`firmware/dmk.c`, shared) but reads and writes **data slots** through the APF target commands (`0180` data slot read, `0184` data slot write): one 512 byte block per command, through the bridge ranges `20000000h` (blocks read) and `30000000h` (blocks written). `apf_dataslot.vhd` also scans the framework's slot size table and watches the "data slot update" event, so the firmware knows which drives hold a file and when one is swapped. The four slots are `deferload` and user-reloadable (`data.json`), so the framework never copies a disk anywhere. Firmware: `firmware/pocket` (`build.sh`, SDCC 4.6, writes `core/io_fw_pkg.vhd`). Its I/O port map is the header of `io_ctrl_pocket.vhd`.
 * **Video.** The core's raw picture (`vid_screen`, `vid_ink`, `vid_pxen`) is used directly: 512 x 192 active pixels, 10.5 MHz, 262 lines (59.4 Hz). `core_top.v` counts the pixels, lets `osd_kbd` colour them, then hands the held values to `clk_vid`, which the framework samples. VS/HS are single-clock pulses made from the core's sync, DE is the 512 x 192 area, the rest is black. Three scaler modes in `video.json` (4:3, 5:3 and square pixels).
 * **On-screen keyboard.** `osd_kbd.v`. The layout, key matrix numbers and the cursor navigation tables are generated by `tools/mkoskbd.py` into `osd_kbd_text.hex`, `_cells.hex` and `_nav.hex` (ROMs read with `$readmemh`); the glyphs come from the CP-300 character generator through `osd_font.vhd`. Keys go to the CP-300 as the same `ext_keys` matrix the DE0 build feeds from its GPIO keyboard.
@@ -86,7 +98,7 @@ Bridge map: `2xxxxxxx` receive buffer (write), `3xxxxxxx` transmit buffer (read)
 
 ## Building
 
-Needs **Quartus Prime Lite 18.1 or newer** (the framework template was made with 18.1.1), the usual CP-300 ROM set (`roms/cp300_roms_pkg.vhd`, `python tools/mkroms.py`, see `roms/README.md`) and, only if you change the firmware, SDCC 4.6.
+Needs **Quartus Prime Lite 18.1 or newer** (the framework template was made with 18.1.1), no ROM files (they are loaded from the SD card at run time) and, only if you change the firmware, SDCC 4.6.
 
 ```
 firmware/pocket/build.sh                       # only after changing firmware/ (io_fw_pkg.vhd is committed)
@@ -96,7 +108,7 @@ python tools/mkoskbd.py                        # only after changing the keyboar
 python syn/analogue/package.py                 # -> syn/analogue/dist-sd/{Cores,Platforms}
 ```
 
-The bitstream contains the CP-300 ROM, which is copyrighted: do not publish the `.rbf` / `.rbf_r`.
+The bitstream contains no ROM, so the `.rbf_r` and the packaged core can be published. Never publish the ROM files themselves (copyrighted).
 
 `icon.bin` and `Platforms/_images/cp300.bin` are the framework template's placeholders; make real ones from PNGs with Pocket Sync or the Analogue image tools (36 x 36 icon, 521 x 165 platform picture).
 
@@ -107,6 +119,7 @@ Done (all on Windows, GHDL 6, iverilog 12):
 * `firmware/pocket/build.sh`: the firmware builds with SDCC 4.6 (5.1 KB of 16 KB).
 * `sim/run_slot.sh`: **GHDL**, the real firmware on `io_ctrl_pocket` + `apf_dataslot` against a behavioural APF host (target commands, 128-word bridge bursts every 9 clocks, slot size table, update event) and a floppy controller played by the bench: the firmware waits for the table, mounts drive 0 from slot 0 and releases the CP-300; sector reads from a 35 track DMK are bit-exact; a missing sector is reported; a sector write goes back to the host image and reads back with a good CRC; ID field read; eject and re-insert show up as unmount / remount. It takes about half an hour (the T80 runs the firmware's CRC code).
 * `sim/run_osd.sh`: **iverilog**, `osd_kbd.v` with the real character generator: navigation, key matrix output, SHIFT latch (B and A on a SHIFT key), quick keys, open/close; renders the keyboard to `sim/out/osd_<n>.png`.
+* `sim/run_rtrom.sh`: **GHDL**, `cp300_rom` and `videoctrl` with `RUNTIME_ROM` loaded through the word port against the same entities built from the ROM package (needs `roms/cp300_roms_pkg.vhd`): every one of the 16384 system ROM addresses, and a frame of picture with text in video RAM with and without the kana set, bit for bit.
 * `sim/run_video.sh`: **iverilog**, `pocket_video.v` fed with the timing of `videoctrl.vhd` (672 x 263 at 10.5 MHz, 512 x 192 picture): one VS and HS pulse per frame / line, VS to HS 8 clocks, HS to DE 128, DE exactly over the picture, pixel values right, black elsewhere.
 * `sim/lint.sh`: **iverilog** elaboration of `core_top.v` with the VHDL entities stubbed: port names and widths and declaration order of the glue.
 * `package.py` on a dummy bitstream.

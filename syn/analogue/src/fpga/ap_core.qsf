@@ -749,7 +749,8 @@ set_global_assignment -name VHDL_FILE core/io_ctrl_pocket.vhd
 set_global_assignment -name VHDL_FILE core/io_fw_pkg.vhd
 set_global_assignment -name VHDL_FILE core/osd_font.vhd
 # the CP-300 (shared with the other boards)
-set_global_assignment -name VHDL_FILE ../../../../roms/cp300_roms_pkg.vhd
+# the ROMs are loaded from the SD card; this empty package only lets the shared files compile
+set_global_assignment -name VHDL_FILE core/cp300_roms_stub.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/fdc/wd1793.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/ht1080z/ht1080z.vhd
