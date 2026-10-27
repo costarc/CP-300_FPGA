@@ -14,6 +14,29 @@
 
 #define DMK_ENTRIES 32
 
+/* Block cache, in 512-byte slots shared by all images (replaced in order, changed slots are written
+ * back when they are replaced and at the end of every sector write).
+ *   DMK_WIN         slots. 3 is enough for the SD card boards: pointer table, and the two blocks a
+ *                   256-byte sector spans (doubled bytes: 512).
+ *   DMK_SPAN        1: a track is loaded with one multi-block call, into slots 0.., the first time a sector
+ *                   of the track is asked for (the platform call is slow per request, as the Pocket's
+ *                   data slots). Needs DMK_WIN >= 22 (a track is up to 10560 bytes).
+ *   DMK_GUESS       1: look for a sector where it probably is (index = sector number, then the same
+ *                   distance from the last ID read) before scanning every ID field in table order. Saves
+ *                   a block read per entry skipped; only differs from the scan with duplicate IDs on one
+ *                   track (copy protection), where the scan returns the first of them.
+ *   DMK_CBUF_ADDR   address of the slot memory (a RAM of its own); default: a static array
+ */
+#ifndef DMK_WIN
+#define DMK_WIN 3
+#endif
+#ifndef DMK_SPAN
+#define DMK_SPAN 0
+#endif
+#ifndef DMK_GUESS
+#define DMK_GUESS 1
+#endif
+
 typedef struct {
 	file_t   f;
 	uint16_t tlen;          /* bytes per track, table included */
@@ -27,11 +50,14 @@ typedef struct {
 	/* the first 32 ID fields of the cached track: pointer, cylinder, sector, unit offset of the
 	 * data mark (0 = not a usable 256-byte sector) */
 	uint8_t  nent;          /* entries in the table */
-	uint8_t  efill;         /* entries 0..efill-1 have been read (ecyl, esec, edam) */
+	uint8_t  gref;          /* the last entry read that is a usable sector (0xFF = none) */
+	uint16_t endblk;        /* last block of the image file (0xFFFF until the header is known) */
+	uint32_t cbase;         /* file offset of the cached track */
 	uint16_t idam[DMK_ENTRIES];
 	uint8_t  ecyl[DMK_ENTRIES];
 	uint8_t  esec[DMK_ENTRIES];
 	uint8_t  edam[DMK_ENTRIES];
+	uint8_t  eseen[DMK_ENTRIES]; /* ecyl, esec, edam have been read */
 } dmk_t;
 
 /* result flags of read/address requests */

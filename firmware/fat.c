@@ -244,3 +244,19 @@ uint8_t file_write(file_t *f, uint32_t n, const uint8_t *buf)
 		return 1;
 	return sd_write(lba, buf);
 }
+
+uint8_t file_read_blocks(file_t *f, uint32_t n, uint16_t cnt, uint8_t *buf)
+{
+	for (; cnt; cnt--, n++, buf += 512)
+		if (file_read(f, n, buf))
+			return 1;
+	return 0;
+}
+
+uint8_t file_write_blocks(file_t *f, uint32_t n, uint16_t cnt, const uint8_t *buf)
+{
+	for (; cnt; cnt--, n++, buf += 512)
+		if (file_write(f, n, buf))
+			return 1;
+	return 0;
+}

@@ -7,6 +7,7 @@
 --
 --   0000-3FFF  firmware ROM (io_fw_pkg, built from firmware/pocket)
 --   4000-5FFF  RAM 8 KB
+--   8000-BFFF  track RAM 16 KB (in apf_dataslot): the data slot commands move whole tracks into and out of it
 --
 -- I/O ports (low address byte):
 --   04  w: b1 hold the CP-300 in reset (set after reset, the firmware clears it once it has mounted)
@@ -19,14 +20,15 @@
 --   14  rw: sector buffer data port, auto-increment
 --   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected
 --   16  w: result of the request: b0 sector found, b1 CRC error, b2 deleted data mark
---   Data slot access (one 512 byte block of an image file at a time):
+--   Data slot access (up to 16 KB of an image file in one command, into / out of the track RAM):
 --   20-23 w: byte offset in the slot file, least significant byte first (a multiple of 512)
 --   24  w: slot (drive) number
---   25  w: 1 = read the block into the receive buffer, 2 = write the transmit buffer to the file
+--   2C,2D w: number of bytes, low and high (at most 16384)
+--   2E,2F w: where in the track RAM (offset from 8000h), low and high
+--   25  w: 1 = read the file into the track RAM, 2 = write the track RAM to the file
 --       r: b0 busy, b1 error of the last command
---   26  r: receive buffer data, auto-increment
---   27  w: both buffer pointers back to 0
---   28  w: transmit buffer data, auto-increment
+--   30-33 r: size of the file in the slot of port 24, least significant byte first (read twice
+--       and compare: it comes from another clock domain)
 --   29  r: b3:0 slot has a file
 --   2A  r: b3:0 the file of the slot was replaced; w: b3:0 clear those bits
 --   2B  r: b0 write protect all disks (core setting), b7 the slot table has been scanned once
@@ -73,13 +75,15 @@ entity io_ctrl_pocket is
     slot_req_wr  : out std_logic;
     slot_num     : out std_logic_vector(1 downto 0);
     slot_offset  : out std_logic_vector(31 downto 0);
+    slot_len     : out std_logic_vector(15 downto 0);
+    slot_boff    : out std_logic_vector(13 downto 0);
     slot_busy    : in  std_logic;
     slot_err     : in  std_logic;
-    rx_addr      : out std_logic_vector(8 downto 0);
-    rx_data      : in  std_logic_vector(7 downto 0);
-    tx_we        : out std_logic;
-    tx_addr      : out std_logic_vector(8 downto 0);
-    tx_data      : out std_logic_vector(7 downto 0);
+    slot_size    : in  std_logic_vector(31 downto 0);   -- size of the file in slot_num
+    trk_addr     : out std_logic_vector(13 downto 0);   -- the track RAM (apf_dataslot)
+    trk_we       : out std_logic;
+    trk_din      : out std_logic_vector(7 downto 0);
+    trk_dout     : in  std_logic_vector(7 downto 0);
     slot_present : in  std_logic_vector(3 downto 0);
     slot_changed : in  std_logic_vector(3 downto 0);
     slot_chg_clr : out std_logic_vector(3 downto 0);
@@ -117,10 +121,14 @@ architecture rtl of io_ctrl_pocket is
   signal off_r   : std_logic_vector(31 downto 0) := (others => '0');
   signal slot_r  : std_logic_vector(1 downto 0) := (others => '0');
   signal tog_r, wr_r : std_logic := '0';
-  signal bdout_tx : std_logic_vector(7 downto 0) := (others => '0');
+  signal len_r   : std_logic_vector(15 downto 0) := (others => '0');
+  signal boff_r  : std_logic_vector(13 downto 0) := (others => '0');
   signal err_r   : std_logic := '0';
-  signal rxp, txp : unsigned(8 downto 0) := (others => '0');
-  signal tx_we_r : std_logic := '0';
+  signal trk_sel : std_logic;
+  signal trk_we_r : std_logic := '0';
+  signal trk_wa  : std_logic_vector(13 downto 0) := (others => '0');
+  signal trk_wd  : std_logic_vector(7 downto 0) := (others => '0');
+  signal size_r  : std_logic_vector(31 downto 0) := (others => '0');
   signal chg_clr_r : std_logic_vector(3 downto 0) := (others => '0');
   signal busy_i  : std_logic;
 
@@ -178,6 +186,7 @@ begin
   wrp     <= iowr and not iowr_q;
   rdp     <= iord_q and not iord;
   rom_sel <= '1' when a(15 downto 14) = "00" else '0';
+  trk_sel <= '1' when a(15 downto 14) = "10" else '0';
   ram_sel <= '1' when a(15 downto 13) = "010" else '0';
 
   -- memories
@@ -236,14 +245,11 @@ begin
   process(clk)
   begin
     if rising_edge(clk) then
-      tx_we_r <= '0';
       chg_clr_r <= (others => '0');
+      size_r <= slot_size;
       if reset = '1' then
         tog_r <= '0'; err_r <= '0';
-        rxp <= (others => '0'); txp <= (others => '0');
       else
-        if cen = '1' and rdp = '1' and rd_port = x"26" then rxp <= rxp + 1; end if;
-        if tx_we_r = '1' then txp <= txp + 1; end if;
         if cen = '1' and wrp = '1' then
           case port_a is
             when x"20" => off_r(7 downto 0)   <= cpu_do;
@@ -256,9 +262,11 @@ begin
                 wr_r <= cpu_do(1);
                 tog_r <= not tog_r;
               end if;
-            when x"27" => rxp <= (others => '0'); txp <= (others => '0');
-            when x"28" => tx_we_r <= '1';
             when x"2A" => chg_clr_r <= cpu_do(3 downto 0);
+            when x"2C" => len_r(7 downto 0)  <= cpu_do;
+            when x"2D" => len_r(15 downto 8) <= cpu_do;
+            when x"2E" => boff_r(7 downto 0) <= cpu_do;
+            when x"2F" => boff_r(13 downto 8) <= cpu_do(5 downto 0);
             when others => null;
           end case;
         end if;
@@ -271,19 +279,25 @@ begin
   slot_req_wr  <= wr_r;
   slot_num     <= slot_r;
   slot_offset  <= off_r;
-  rx_addr      <= std_logic_vector(rxp);
-  tx_we        <= tx_we_r;
-  tx_addr      <= std_logic_vector(txp);
-  tx_data      <= bdout_tx;
+  slot_len     <= len_r;
+  slot_boff    <= boff_r;
   slot_chg_clr <= chg_clr_r;
 
-  -- the byte written to port 28 is held for the RAM write one clock later
+  -- track RAM: a write is registered and goes in one clock later (nothing reads it that soon)
   process(clk)
   begin
     if rising_edge(clk) then
-      if cen = '1' and wrp = '1' and port_a = x"28" then bdout_tx <= cpu_do; end if;
+      trk_we_r <= '0';
+      if cen = '1' and mreq_n = '0' and wr_n = '0' and trk_sel = '1' then
+        trk_we_r <= '1';
+        trk_wa <= a(13 downto 0);
+        trk_wd <= cpu_do;
+      end if;
     end if;
   end process;
+  trk_we   <= trk_we_r;
+  trk_addr <= trk_wa when trk_we_r = '1' else a(13 downto 0);
+  trk_din  <= trk_wd;
 
   -- control register and debug byte
   process(clk)
@@ -302,6 +316,7 @@ begin
 
   di <= rom_do when mreq_n = '0' and rom_sel = '1' else
         ram_do when mreq_n = '0' and ram_sel = '1' else
+        trk_dout when mreq_n = '0' and trk_sel = '1' else
         x"FF"  when mreq_n = '0' else
         x"A6"   when port_a = x"07" else
         '0' & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
@@ -310,7 +325,10 @@ begin
         fdc_sector when port_a = x"17" else
         fdc_buff_din when port_a = x"14" else
         "000000" & err_r & busy_i when port_a = x"25" else
-        rx_data when port_a = x"26" else
+        size_r(7 downto 0)   when port_a = x"30" else
+        size_r(15 downto 8)  when port_a = x"31" else
+        size_r(23 downto 16) when port_a = x"32" else
+        size_r(31 downto 24) when port_a = x"33" else
         "0000" & slot_present when port_a = x"29" else
         "0000" & slot_changed when port_a = x"2A" else
         scan_valid & "000000" & opt_wp when port_a = x"2B" else

@@ -320,8 +320,8 @@ assign vpll_feed = 1'bZ;
 
 // ------------------------------------------------------------------ bridge address map
 //
-//   2xxxxxxx  w  receive buffer: the 512 byte block of a "data slot read" (apf_dataslot)
-//   3xxxxxxx  r  transmit buffer: the block of a "data slot write"
+//   2xxxxxxx  w  track RAM, written by a "data slot read" (apf_dataslot, up to 16 KB)
+//   3xxxxxxx  r  track RAM, read by a "data slot write"
 //   40000000+ rw core settings, see interact.json (one 32-bit register each)
 //   F8xxxxxx     framework commands (core_bridge_cmd)
 //
@@ -633,7 +633,7 @@ wire [15:0] exp_addr;
 wire  [7:0] exp_dout;
 wire        exp_in, exp_out;
 
-ht1080z #(.EXT_RAM(1'b1)) cp300 (
+ht1080z_ext cp300 (
     .clk42m (clk42),
     .pllLocked(run42),
     .reset(core_reset),
@@ -719,14 +719,16 @@ ht1080z #(.EXT_RAM(1'b1)) cp300 (
 // The helper Z80 serves the floppy controller's sector requests out of the DMK images in data
 // slots 0-3 (drives 0-3), see apf_dataslot.vhd and firmware/pocket.
 
-wire        slot_req_tog, slot_req_wr, slot_busy, slot_err, slot_tx_we, scan_valid;
+wire        slot_req_tog, slot_req_wr, slot_busy, slot_err, trk_we, scan_valid;
 wire  [1:0] slot_num;
 wire [31:0] slot_offset;
-wire  [8:0] slot_rx_addr, slot_tx_addr;
-wire  [7:0] slot_rx_data, slot_tx_data;
+wire [15:0] slot_len;
+wire [13:0] slot_boff, trk_addr;
+wire  [7:0] trk_din, trk_dout;
+wire [31:0] slot_size;
 wire  [3:0] slot_present, slot_changed, slot_chg_clr;
 
-io_ctrl_pocket #(.CPU_HALF(1'b1)) io_ctrl (
+io_ctrl_pocket io_ctrl (
     .clk(clk42),
     .reset(~run42),
     .core_rst(io_hold),
@@ -758,11 +760,13 @@ io_ctrl_pocket #(.CPU_HALF(1'b1)) io_ctrl (
     .slot_offset(slot_offset),
     .slot_busy(slot_busy),
     .slot_err(slot_err),
-    .rx_addr(slot_rx_addr),
-    .rx_data(slot_rx_data),
-    .tx_we(slot_tx_we),
-    .tx_addr(slot_tx_addr),
-    .tx_data(slot_tx_data),
+    .slot_len(slot_len),
+    .slot_boff(slot_boff),
+    .slot_size(slot_size),
+    .trk_addr(trk_addr),
+    .trk_we(trk_we),
+    .trk_din(trk_din),
+    .trk_dout(trk_dout),
     .slot_present(slot_present),
     .slot_changed(slot_changed),
     .slot_chg_clr(slot_chg_clr),
@@ -803,11 +807,13 @@ apf_dataslot slots (
     .req_offset(slot_offset),
     .busy(slot_busy),
     .err(slot_err),
-    .rx_addr(slot_rx_addr),
-    .rx_data(slot_rx_data),
-    .tx_we(slot_tx_we),
-    .tx_addr(slot_tx_addr),
-    .tx_data(slot_tx_data),
+    .req_len(slot_len),
+    .req_boff(slot_boff),
+    .size_sel(slot_size),
+    .trk_addr(trk_addr),
+    .trk_we(trk_we),
+    .trk_din(trk_din),
+    .trk_dout(trk_dout),
     .present(slot_present),
     .changed(slot_changed),
     .chg_clr(slot_chg_clr),

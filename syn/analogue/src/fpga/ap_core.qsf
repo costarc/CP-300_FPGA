@@ -42,7 +42,7 @@
 # ========================
 set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1.1
 set_global_assignment -name PROJECT_CREATION_TIME_DATE "21:31:36  JANUARY 22, 2020"
-set_global_assignment -name LAST_QUARTUS_VERSION "18.1.1 Lite Edition"
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"
 set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:apf/build_id_gen.tcl"
 set_global_assignment -name SMART_RECOMPILE ON
@@ -744,6 +744,7 @@ set_global_assignment -name VERILOG_FILE core/pocket_video.v
 set_global_assignment -name SYSTEMVERILOG_FILE core/sound_i2s.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/sync_fifo.sv
 set_global_assignment -name VHDL_FILE core/apf_dataslot.vhd
+set_global_assignment -name VHDL_FILE core/trk_ram.vhd
 set_global_assignment -name VHDL_FILE core/io_ctrl_pocket.vhd
 set_global_assignment -name VHDL_FILE core/io_fw_pkg.vhd
 set_global_assignment -name VHDL_FILE core/osd_font.vhd
@@ -752,6 +753,7 @@ set_global_assignment -name VHDL_FILE ../../../../roms/cp300_roms_pkg.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/fdc/wd1793.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/ht1080z/ht1080z.vhd
+set_global_assignment -name VHDL_FILE core/ht1080z_ext.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/ht1080z/videoctrl.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/ht1080z/ps2kbd.vhd
 set_global_assignment -name VHDL_FILE ../../../../rtl/ht1080z/ps2reader.vhd

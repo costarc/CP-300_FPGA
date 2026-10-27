@@ -15,7 +15,7 @@ OPTS="--std=08 -fsynopsys -frelaxed --workdir=$OUT"
 for f in \
   rtl/T80/T80_Pack.vhd rtl/T80/T80_ALU.vhd rtl/T80/T80_MCode.vhd rtl/T80/T80_Reg.vhd \
   rtl/T80/T80.vhd rtl/T80/T80s.vhd \
-  syn/analogue/src/fpga/core/io_fw_pkg.vhd syn/analogue/src/fpga/core/apf_dataslot.vhd \
+  syn/analogue/src/fpga/core/io_fw_pkg.vhd syn/analogue/sim/trk_ram_sim.vhd syn/analogue/src/fpga/core/apf_dataslot.vhd \
   syn/analogue/src/fpga/core/io_ctrl_pocket.vhd syn/analogue/sim/tb_slot.vhd
 do
   $GHDL -a $OPTS "$ROOT/$f"

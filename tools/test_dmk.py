@@ -33,7 +33,8 @@ def main():
     mkfat.build(img, False, store, clusters=60000, spc_arg=2)
     exe = os.path.join(tmp, "host_dmk")
     src = os.path.join(HERE, "..", "firmware")
-    subprocess.check_call(["gcc", "-DHOST_TEST", "-I", src, "-o", exe,
+    cflags = os.environ.get("DMK_CFLAGS", "").split()      # e.g. "-DDMK_WIN=32 -DDMK_SPAN=1 -DDMK_GUESS=0"
+    subprocess.check_call(["gcc", "-DHOST_TEST", "-I", src] + cflags + ["-o", exe,
                            os.path.join(src, "tests", "host_dmk.c"), os.path.join(src, "tests", "host_sd.c"),
                            os.path.join(src, "dmk.c"), os.path.join(src, "fat.c")])
     out = subprocess.check_output([exe] + [mkfat.short_name(n).decode() for n in names],

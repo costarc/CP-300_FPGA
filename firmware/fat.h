@@ -36,5 +36,8 @@ void     file_open(file_t *f, const dirent_t *e);
 uint8_t  file_sector(file_t *f, uint32_t n, uint32_t *lba); /* 0 = ok, mapped absolute LBA */
 uint8_t  file_read(file_t *f, uint32_t n, uint8_t *buf);
 uint8_t  file_write(file_t *f, uint32_t n, const uint8_t *buf);
+/* cnt consecutive blocks from block n, 0 = ok (dmk.c) */
+uint8_t  file_read_blocks(file_t *f, uint32_t n, uint16_t cnt, uint8_t *buf);
+uint8_t  file_write_blocks(file_t *f, uint32_t n, uint16_t cnt, const uint8_t *buf);
 
 #endif

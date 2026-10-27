@@ -21,10 +21,15 @@ __sfr __at(0x21) SLOT_OFF1;
 __sfr __at(0x22) SLOT_OFF2;
 __sfr __at(0x23) SLOT_OFF3;
 __sfr __at(0x24) SLOT_NUM;    /* w: slot (drive) */
-__sfr __at(0x25) SLOT_CMD;    /* w: 1 read block, 2 write block;  r: b0 busy, b1 error */
-__sfr __at(0x26) SLOT_RX;     /* r: receive buffer, auto-increment */
-__sfr __at(0x27) SLOT_PTR;    /* w: buffer pointers to 0 */
-__sfr __at(0x28) SLOT_TX;     /* w: transmit buffer, auto-increment */
+__sfr __at(0x25) SLOT_CMD;    /* w: 1 read the file into the track RAM, 2 write the track RAM to the file;  r: b0 busy, b1 error */
+__sfr __at(0x2C) SLOT_LENL;   /* w: bytes to move (at most 16384) */
+__sfr __at(0x2D) SLOT_LENH;
+__sfr __at(0x2E) SLOT_BOFF0;  /* w: where in the track RAM (offset from 8000h) */
+__sfr __at(0x2F) SLOT_BOFF1;
+__sfr __at(0x30) SLOT_SIZE0;  /* r: size of the file in the slot of SLOT_NUM */
+__sfr __at(0x31) SLOT_SIZE1;
+__sfr __at(0x32) SLOT_SIZE2;
+__sfr __at(0x33) SLOT_SIZE3;
 __sfr __at(0x29) SLOT_PRES;   /* r: b3:0 slot has a file */
 __sfr __at(0x2A) SLOT_CHG;    /* r: b3:0 file replaced;  w: clear those bits */
 __sfr __at(0x2B) SLOT_OPT;    /* r: b0 write protect all disks, b7 slot table scanned */

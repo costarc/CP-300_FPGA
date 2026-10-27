@@ -1,11 +1,13 @@
 -- CP-300 FPGA, Analogue Pocket: data slot access for the IO controller.
 --
 -- Disk images are APF data slots (deferload, so the framework does not copy them anywhere). The IO
--- controller reads and writes them one 512 byte block at a time with the target commands
--- "data slot read" and "data slot write" of core_bridge_cmd:
+-- controller reads and writes them with the target commands "data slot read" and "data slot write"
+-- of core_bridge_cmd, up to a whole DMK track (16 KB) per command:
 --
---   read   the framework writes the block to the bridge at 20000000h..200001FFh (rx buffer)
---   write  the framework reads the block from the bridge at 30000000h..300001FFh (tx buffer)
+--   read   the framework writes the bytes to the bridge at 20000000h + buffer offset (the track RAM)
+--   write  the framework reads the bytes from the bridge at 30000000h + buffer offset (the same RAM)
+--
+-- The track RAM (16 KB, four byte lanes) is also in the IO controller's memory map, at 8000h.
 --
 -- The bridge is big endian here (bridge_endian_little = 0): the first byte of a word is bits 31:24.
 --
@@ -54,13 +56,15 @@ entity apf_dataslot is
     req_wr      : in  std_logic;
     req_slot    : in  std_logic_vector(1 downto 0);
     req_offset  : in  std_logic_vector(31 downto 0);
+    req_len     : in  std_logic_vector(15 downto 0);    -- bytes (at most 16384)
+    req_boff    : in  std_logic_vector(13 downto 0);    -- where in the track RAM
     busy        : out std_logic;
     err         : out std_logic;
-    rx_addr     : in  std_logic_vector(8 downto 0);
-    rx_data     : out std_logic_vector(7 downto 0);
-    tx_we       : in  std_logic;
-    tx_addr     : in  std_logic_vector(8 downto 0);
-    tx_data     : in  std_logic_vector(7 downto 0);
+    trk_addr    : in  std_logic_vector(13 downto 0);    -- IO controller access to the track RAM
+    trk_we      : in  std_logic;
+    trk_din     : in  std_logic_vector(7 downto 0);
+    trk_dout    : out std_logic_vector(7 downto 0);
+    size_sel    : out std_logic_vector(31 downto 0);    -- size of the file in the slot req_slot
     present     : out std_logic_vector(3 downto 0);
     changed     : out std_logic_vector(3 downto 0);
     chg_clr     : in  std_logic_vector(3 downto 0);
@@ -70,16 +74,15 @@ end apf_dataslot;
 
 architecture rtl of apf_dataslot is
 
-  type rx_t is array (0 to 127) of std_logic_vector(31 downto 0);
-  type lane_t is array (0 to 127) of std_logic_vector(7 downto 0);
   type sz_t is array (0 to 3) of std_logic_vector(31 downto 0);
   type st_t is (S_IDLE, S_ISSUE, S_TAKEN, S_WAIT, S_FIN);
   type sc_t is (C_A0, C_A1, C_A2, C_A3, C_B0, C_B1, C_B2, C_B3);
 
-  signal rx_ram : rx_t := (others => (others => '0'));
-  signal tx0, tx1, tx2, tx3 : lane_t := (others => (others => '0'));
-  signal rx_w   : std_logic_vector(31 downto 0) := (others => '0');
-  signal rx_lane: std_logic_vector(1 downto 0) := "00";
+  signal wea       : std_logic;
+  signal qa0, qa1, qa2, qa3 : std_logic_vector(7 downto 0);
+  signal web       : std_logic_vector(3 downto 0);
+  signal qb0, qb1, qb2, qb3 : std_logic_vector(7 downto 0);
+  signal lane_b    : std_logic_vector(1 downto 0) := "00";
 
   -- clk_74a domain
   signal rq1, rq2, rq3 : std_logic := '0';
@@ -109,49 +112,51 @@ architecture rtl of apf_dataslot is
 
 begin
 
-  -- ---------------------------------------------------------------- buffers
-  process(clk_74a)
-  begin
-    if rising_edge(clk_74a) then
-      if bridge_wr = '1' and bridge_addr(31 downto 28) = "0010" then
-        rx_ram(to_integer(unsigned(bridge_addr(8 downto 2)))) <= bridge_wr_data;
-      end if;
-      tx_rd_data <= tx0(to_integer(unsigned(bridge_addr(8 downto 2)))) &
-                    tx1(to_integer(unsigned(bridge_addr(8 downto 2)))) &
-                    tx2(to_integer(unsigned(bridge_addr(8 downto 2)))) &
-                    tx3(to_integer(unsigned(bridge_addr(8 downto 2))));
-    end if;
-  end process;
+  -- ---------------------------------------------------------------- track RAM
+  -- 4096 words of 4 bytes. Port A (clk_74a) is the bridge: the host writes into it (read command, 2x)
+  -- and reads from it (write command, 3x); the first byte of a word is bits 31:24 = lane 0. Port B (clk)
+  -- is the IO controller, one byte at a time: address bits 1:0 pick the lane.
+  wea <= '1' when bridge_wr = '1' and bridge_addr(31 downto 28) = "0010" else '0';
+  web <= "0000" when trk_we = '0' else
+         "1000" when trk_addr(1 downto 0) = "00" else      -- lane 0 (bits 31:24)
+         "0100" when trk_addr(1 downto 0) = "01" else
+         "0010" when trk_addr(1 downto 0) = "10" else
+         "0001";
+
+  ram0 : entity work.trk_ram port map (clk_a => clk_74a, addr_a => bridge_addr(13 downto 2), we_a => wea,
+           din_a => bridge_wr_data(31 downto 24), dout_a => qa0,
+           clk_b => clk, addr_b => trk_addr(13 downto 2), we_b => web(3), din_b => trk_din, dout_b => qb0);
+  ram1 : entity work.trk_ram port map (clk_a => clk_74a, addr_a => bridge_addr(13 downto 2), we_a => wea,
+           din_a => bridge_wr_data(23 downto 16), dout_a => qa1,
+           clk_b => clk, addr_b => trk_addr(13 downto 2), we_b => web(2), din_b => trk_din, dout_b => qb1);
+  ram2 : entity work.trk_ram port map (clk_a => clk_74a, addr_a => bridge_addr(13 downto 2), we_a => wea,
+           din_a => bridge_wr_data(15 downto 8), dout_a => qa2,
+           clk_b => clk, addr_b => trk_addr(13 downto 2), we_b => web(1), din_b => trk_din, dout_b => qb2);
+  ram3 : entity work.trk_ram port map (clk_a => clk_74a, addr_a => bridge_addr(13 downto 2), we_a => wea,
+           din_a => bridge_wr_data(7 downto 0), dout_a => qa3,
+           clk_b => clk, addr_b => trk_addr(13 downto 2), we_b => web(0), din_b => trk_din, dout_b => qb3);
+
+  tx_rd_data <= qa0 & qa1 & qa2 & qa3;               -- the word at bridge_addr, one clock late
 
   process(clk)
   begin
     if rising_edge(clk) then
-      rx_w    <= rx_ram(to_integer(unsigned(rx_addr(8 downto 2))));
-      rx_lane <= rx_addr(1 downto 0);
-      if tx_we = '1' then
-        case tx_addr(1 downto 0) is
-          when "00"   => tx0(to_integer(unsigned(tx_addr(8 downto 2)))) <= tx_data;
-          when "01"   => tx1(to_integer(unsigned(tx_addr(8 downto 2)))) <= tx_data;
-          when "10"   => tx2(to_integer(unsigned(tx_addr(8 downto 2)))) <= tx_data;
-          when others => tx3(to_integer(unsigned(tx_addr(8 downto 2)))) <= tx_data;
-        end case;
-      end if;
+      lane_b <= trk_addr(1 downto 0);
     end if;
   end process;
-
-  with rx_lane select rx_data <=
-    rx_w(31 downto 24) when "00",
-    rx_w(23 downto 16) when "01",
-    rx_w(15 downto 8)  when "10",
-    rx_w(7 downto 0)   when others;
+  with lane_b select trk_dout <=
+    qb0 when "00",
+    qb1 when "01",
+    qb2 when "10",
+    qb3 when others;
 
   -- ---------------------------------------------------------------- target commands (clk_74a)
   target_dataslot_read       <= rd_r;
   target_dataslot_write      <= wr_r;
   target_dataslot_id         <= slot_74;
   target_dataslot_slotoffset <= req_offset;        -- static while a command runs
-  target_dataslot_bridgeaddr <= x"30000000" when req_wr = '1' else x"20000000";
-  target_dataslot_length     <= x"00000200";
+  target_dataslot_bridgeaddr <= x"3000" & "00" & req_boff when req_wr = '1' else x"2000" & "00" & req_boff;
+  target_dataslot_length     <= x"0000" & req_len;      -- static while a command runs
 
   process(clk_74a)
   begin
@@ -261,6 +266,7 @@ begin
     end if;
   end process;
 
+  size_sel   <= cur_sz(to_integer(unsigned(req_slot)));   -- read by the firmware twice, see slotfile.c
   busy       <= req_tog xor ds2;
   err        <= er2;
   present    <= pr2;

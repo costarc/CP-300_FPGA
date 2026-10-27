@@ -33,11 +33,12 @@ architecture sim of tb_slot is
   signal fdc_buff_wr : std_logic;
   signal drv_ready, drv_wp : std_logic_vector(3 downto 0);
 
-  signal req_tog, req_wr, busy, err, tx_we, scan_valid : std_logic;
+  signal req_tog, req_wr, busy, err, trk_we, scan_valid : std_logic;
   signal req_slot : std_logic_vector(1 downto 0);
-  signal req_offset : std_logic_vector(31 downto 0);
-  signal rx_addr, tx_addr : std_logic_vector(8 downto 0);
-  signal rx_data, tx_data : std_logic_vector(7 downto 0);
+  signal req_offset, slot_size : std_logic_vector(31 downto 0);
+  signal slot_len : std_logic_vector(15 downto 0);
+  signal slot_boff, trk_addr : std_logic_vector(13 downto 0);
+  signal trk_din, trk_dout : std_logic_vector(7 downto 0);
   signal present, changed, chg_clr : std_logic_vector(3 downto 0);
 
   -- bridge
@@ -57,7 +58,7 @@ architecture sim of tb_slot is
   shared variable img : img_t := (others => x"FF");
   signal img_size : integer := 0;
   shared variable slot0_size : integer := 0;     -- what the size table says (0 = no file)
-  signal host_ops, host_writes : integer := 0;
+  signal host_ops, host_writes, host_bytes : integer := 0;
 
   type buf_t is array (0 to 511) of std_logic_vector(7 downto 0);
   shared variable fbuf : buf_t := (others => x"00");
@@ -82,8 +83,9 @@ begin
               fdc_buff_addr => fdc_buff_addr, fdc_buff_dout => fdc_buff_dout, fdc_buff_wr => fdc_buff_wr,
               fdc_buff_din => fdc_buff_din, drv_ready => drv_ready, drv_wp => drv_wp,
               slot_req_tog => req_tog, slot_req_wr => req_wr, slot_num => req_slot, slot_offset => req_offset,
-              slot_busy => busy, slot_err => err, rx_addr => rx_addr, rx_data => rx_data,
-              tx_we => tx_we, tx_addr => tx_addr, tx_data => tx_data,
+              slot_len => slot_len, slot_boff => slot_boff, slot_size => slot_size,
+              slot_busy => busy, slot_err => err,
+              trk_addr => trk_addr, trk_we => trk_we, trk_din => trk_din, trk_dout => trk_dout,
               slot_present => present, slot_changed => changed, slot_chg_clr => chg_clr,
               scan_valid => scan_valid, opt_wp => '0');
 
@@ -98,8 +100,9 @@ begin
               target_dataslot_bridgeaddr => t_baddr, target_dataslot_length => t_len,
               datatable_addr => dt_addr, datatable_q => dt_q,
               req_tog => req_tog, req_wr => req_wr, req_slot => req_slot, req_offset => req_offset,
-              busy => busy, err => err, rx_addr => rx_addr, rx_data => rx_data,
-              tx_we => tx_we, tx_addr => tx_addr, tx_data => tx_data,
+              req_len => slot_len, req_boff => slot_boff, size_sel => slot_size,
+              busy => busy, err => err,
+              trk_addr => trk_addr, trk_we => trk_we, trk_din => trk_din, trk_dout => trk_dout,
               present => present, changed => changed, chg_clr => chg_clr, scan_valid => scan_valid);
 
   ----------------------------------------------------------------------
@@ -127,7 +130,7 @@ begin
     type cf is file of character;
     file f : cf;
     variable c : character;
-    variable n, off, w : integer;
+    variable n, off, w, nbytes : integer;
     variable word : std_logic_vector(31 downto 0);
   begin
     -- load the disk image
@@ -151,11 +154,14 @@ begin
       for i in 1 to 3 loop wait until rising_edge(clk74); end loop;
       t_ack <= '1';
       for i in 1 to 100 loop wait until rising_edge(clk74); end loop;     -- the host's latency
-      assert t_len = x"00000200" report "bad length" severity failure;
+      nbytes := to_integer(unsigned(t_len));
+      assert nbytes > 0 and nbytes <= 16384 report "bad length" severity failure;
+      assert off + nbytes <= img_size report "transfer past the end of the file" severity failure;
+      host_bytes <= host_bytes + nbytes;
       if t_read = '1' or (t_baddr(31 downto 28) = x"2") then
-        -- host writes the block into the core, one word per ~75 clocks
-        assert t_baddr = x"20000000" report "read: bad bridge address" severity failure;
-        for k in 0 to 127 loop
+        -- host writes the bytes into the core (the track RAM), one word per ~75 clocks
+        assert t_baddr(31 downto 14) = x"2000" & "00" report "read: bad bridge address" severity failure;
+        for k in 0 to (nbytes + 3) / 4 - 1 loop
           word := img(off + 4*k) & img(off + 4*k + 1) & img(off + 4*k + 2) & img(off + 4*k + 3);
           bridge_addr <= std_logic_vector(unsigned(t_baddr) + to_unsigned(4*k, 32));
           bridge_wr_data <= word;
@@ -165,17 +171,17 @@ begin
           for i in 1 to 8 loop wait until rising_edge(clk74); end loop;
         end loop;
       else
-        -- host reads the block out of the core
-        assert t_baddr = x"30000000" report "write: bad bridge address" severity failure;
+        -- host reads the bytes out of the core
+        assert t_baddr(31 downto 14) = x"3000" & "00" report "write: bad bridge address" severity failure;
         host_writes <= host_writes + 1;
-        for k in 0 to 127 loop
+        for k in 0 to (nbytes + 3) / 4 - 1 loop
           bridge_addr <= std_logic_vector(unsigned(t_baddr) + to_unsigned(4*k, 32));
           for i in 1 to 4 loop wait until rising_edge(clk74); end loop;
           word := tx_rd_data;
           img(off + 4*k)     := word(31 downto 24);
-          img(off + 4*k + 1) := word(23 downto 16);
-          img(off + 4*k + 2) := word(15 downto 8);
-          img(off + 4*k + 3) := word(7 downto 0);
+          if 4*k + 1 < nbytes then img(off + 4*k + 1) := word(23 downto 16); end if;
+          if 4*k + 2 < nbytes then img(off + 4*k + 2) := word(15 downto 8); end if;
+          if 4*k + 3 < nbytes then img(off + 4*k + 3) := word(7 downto 0); end if;
         end loop;
       end if;
       wait until rising_edge(clk74);
@@ -211,6 +217,7 @@ begin
   ----------------------------------------------------------------------
   test : process
     variable found, crc : std_logic;
+    variable ops0, wr0 : integer;
 
     procedure check(cond : boolean; msg : string) is
     begin
@@ -259,21 +266,33 @@ begin
 
     read_check(0, 0);
     read_check(0, 9);
+    ops0 := host_ops;
     read_check(17, 5);
-    read_check(34, 3);
+    check(host_ops = ops0 + 1, "the first read of a track should be one host request, not " & integer'image(host_ops - ops0));
+    ops0 := host_ops;
+    read_check(17, 6);
+    read_check(17, 0);
+    read_check(17, 9);
+    check(host_ops = ops0, "more sectors of the loaded track should not reach the host");
+    read_check(34, 3);                                         -- the last track of the file
 
     request('1', '0', '0', 5, 12);
     check(found = '0', "sector 12 should not exist");
 
     -- write a sector with a different pattern, then read it back
     fdc_drive <= "00";
+    read_check(2, 0);                                          -- the track is loaded first, as the controller would
     for i in 0 to 255 loop
       fbuf(i) := std_logic_vector(to_unsigned((255 - i) mod 256, 8));
     end loop;
     wait until rising_edge(clk);
+    wr0 := host_writes; ops0 := host_ops;
     request('0', '1', '0', 2, 4);
     check(found = '1', "write of 2/4 failed");
-    check(host_writes > 0, "no data slot write reached the host");
+    check(host_writes > wr0, "no data slot write reached the host");
+    check(host_writes - wr0 = 1, "the changed blocks of a sector should go in one host write, got " &
+          integer'image(host_writes - wr0));
+    check(host_ops - ops0 = host_writes - wr0, "a sector write should not read from the host");
     for i in 0 to 255 loop fbuf(i) := x"00"; end loop;
     wait until rising_edge(clk);
     request('1', '0', '0', 2, 4);
@@ -303,7 +322,7 @@ begin
     wait until drv_ready(0) = '1' for 5 ms;
     check(drv_ready(0) = '1', "drive 0 not ready after the file came back");
     read_check(2, 3);                                          -- after the remount
-    report "host ops: " & integer'image(host_ops);
+    report "host ops: " & integer'image(host_ops) & ", bytes: " & integer'image(host_bytes);
 
     if fails = 0 then
       report "PASS";
