@@ -59,7 +59,7 @@
                 "id": 4,
                 "required": true,
                 "parameters": "0x200",
-                "filename": "cp300.rom",
+                "filename": "27C128cp300.BIN",
                 "extensions": [
                     "rom",
                     "bin"
@@ -72,7 +72,7 @@
                 "id": 5,
                 "required": true,
                 "parameters": "0x200",
-                "filename": "cp300chr.rom",
+                "filename": "2716cp300.BIN",
                 "extensions": [
                     "rom",
                     "bin"

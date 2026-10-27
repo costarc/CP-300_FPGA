@@ -17,7 +17,7 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 ### First start
 
 1. Build the core ([Building](#building)) and run `python package.py`. Copy `dist-sd/Cores/` and `dist-sd/Platforms/` to the root of the Pocket's SD card.
-2. Put the **CP-300 ROMs** and your disk images in `Assets/cp300/common/` on the card. The ROMs are not in the core (see [ROMs](#roms)): `cp300.rom` (16 KB system ROM) and `cp300chr.rom` (2 KB character generator). Disk images are `.dsk` / `.dmk` files in DMK format.
+2. Put the **CP-300 ROMs** and your disk images in `Assets/cp300/common/` on the card. The ROMs are not in the core (see [ROMs](#roms)): `27C128cp300.BIN` (16 KB system ROM) and `2716cp300.BIN` (2 KB character generator). Disk images are `.dsk` / `.dmk` files in DMK format.
 3. Start **CP-300** from the Pocket's core list. If a ROM file is missing the Pocket opens its file browser for it; pick the file once and it is remembered. With no disk selected the CP-300 ROM shows its `Cass?` prompt: answer **A** for BASIC (the ROM takes A/B, not L/H), then ENTER at `Mem. usada?` (open the keyboard with Select to type).
 4. To boot a disk: Analogue button, **Core Settings**, **Drive 0 (boot)**, pick the file, then **Reset CP-300**. The Pocket remembers the choice for the next start.
 5. At `TRSDOS Ready` (TRSDOS 1.3) type `BASIC`, press ENTER at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` for a file on Drive 1).
@@ -58,12 +58,14 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 ### ROMs
 
+The ROM set widely shared for the CP-300 (`roms_cp300.zip`: `27C128cp300.BIN` and `2716cp300.BIN`) works **as it is**: unzip it into `Assets/cp300/common/`, no conversion. (Checked: the two files are byte-identical to the 900-61..64 dumps in a row and to 900-65.)
+
 The bitstream contains no CP-300 ROM, so the core can be published; each user supplies the ROMs, which are loaded into the core's ROM RAMs when it starts:
 
 | File (in `Assets/cp300/common/`) | Size | Content |
 |---|---|---|
-| `cp300.rom` | 16384 bytes | the system ROM, address 0000-3FFF: `900-61`..`900-64` one after the other (2732s, 4 KB each), or the 27C128 of later boards |
-| `cp300chr.rom` | 2048 bytes | the character generator `900-65` (2716) |
+| `27C128cp300.BIN` | 16384 bytes | the system ROM, address 0000-3FFF: `900-61`..`900-64` one after the other (2732s, 4 KB each), or the 27C128 of later boards |
+| `2716cp300.BIN` | 2048 bytes | the character generator `900-65` (2716) |
 
 If you have the four EPROM dumps in `roms/` (see `roms/README.md`), `python tools/mkpocketrom.py` writes both files; for a 27C128 dump use `python tools/mkpocketrom.py outdir --27c128 27C128cp300.BIN 900-65.BIN`. In *Core Settings* the two files appear as *System ROM* and *Character ROM*; the Pocket remembers the choice. Without a system ROM the screen stays black.
 

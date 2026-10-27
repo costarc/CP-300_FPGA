@@ -34,7 +34,7 @@ Not done: the helper CPU still runs at half clock where `CPU_HALF` is set (timin
 - Slots 0-3 are `deferload`, user-reloadable, bit 9 (persist filename). Interact defaults must match the register reset values in `core_top.v`.
 - The IO controller holds the CP-300 in reset until the firmware has scanned the slot table and mounted; the firmware takes ~12 ms (sim) before releasing.
 - Keyboard keys use the same 8x8 `ext_keys` matrix as the DE0 (bit = 8*row+col; BREAK = 50, SHIFTs 56/57).
-- **ROMs are runtime**, not in the bitstream (publish-friendly): data slots 4 (`cp300.rom`, 16 KB, bridge `50000000h`) and 5 (`cp300chr.rom`, 2 KB, `50004000h`), required, filename persisted. `RUNTIME_ROM` generic in `cp300_rom`, `videoctrl`, `ht1080z` (set by `ht1080z_ext`), RAMs written with `clk_74a` through `rl_*`; the Pocket qsf uses `core/cp300_roms_stub.vhd` instead of `roms/cp300_roms_pkg.vhd`. `tools/mkpocketrom.py` makes the files from `roms/`. Never commit or publish the ROM files; `run_osd.sh` / `run_rtrom.sh` still read `roms/` locally.
+- **ROMs are runtime**, not in the bitstream (publish-friendly): data slots 4 (`27C128cp300.BIN`, 16 KB, bridge `50000000h`) and 5 (`2716cp300.BIN`, 2 KB, `50004000h`), required, filename persisted. `RUNTIME_ROM` generic in `cp300_rom`, `videoctrl`, `ht1080z` (set by `ht1080z_ext`), RAMs written with `clk_74a` through `rl_*`; the Pocket qsf uses `core/cp300_roms_stub.vhd` instead of `roms/cp300_roms_pkg.vhd`. `tools/mkpocketrom.py` makes the files from `roms/`. Never commit or publish the ROM files; `run_osd.sh` / `run_rtrom.sh` still read `roms/` locally.
 - Only Quartus II 13.0sp1 on the machine: the Cyclone III/DE0 flow is unaffected (`firmware/dmk.h` only gained an `#ifdef POCKET`).
 
 ## Next steps

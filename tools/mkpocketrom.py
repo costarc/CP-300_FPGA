@@ -3,8 +3,8 @@
 
     python tools/mkpocketrom.py [outdir]        default: syn/analogue/dist-sd/Assets/cp300/common
 
-  cp300.rom      16 KB system ROM: 900-61.BIN .. 900-64.BIN one after the other (0000-3FFF), from roms/
-  cp300chr.rom   2 KB character generator, a copy of 900-65.BIN
+  27C128cp300.BIN      16 KB system ROM: 900-61.BIN .. 900-64.BIN one after the other (0000-3FFF), from roms/
+  2716cp300.BIN   2 KB character generator, a copy of 900-65.BIN
 
 Or, with a single-EPROM dump of the later boards (27C128, 16 KB, the same layout):
 
@@ -39,9 +39,9 @@ def main():
         sys.exit("error: the system ROM must be 16384 bytes, got %d (4 x 4 KB 2732 images, or a 27C128 dump)" % len(sysrom))
     if len(char) != 2048:
         sys.exit("error: the character generator must be 2048 bytes, got %d" % len(char))
-    open(os.path.join(out, "cp300.rom"), "wb").write(sysrom)
-    open(os.path.join(out, "cp300chr.rom"), "wb").write(char)
-    print("wrote", os.path.join(out, "cp300.rom"), "and cp300chr.rom")
+    open(os.path.join(out, "27C128cp300.BIN"), "wb").write(sysrom)
+    open(os.path.join(out, "2716cp300.BIN"), "wb").write(char)
+    print("wrote", os.path.join(out, "27C128cp300.BIN"), "and 2716cp300.BIN")
 
 
 if __name__ == "__main__":
