@@ -27,11 +27,13 @@ this lists what is open.
   through nginx (`/cp300/`) and from the Cockpit sidebar entry.
 - The package (`package/`) with the installer, the load helper and the disclaimer; the installer's software path and the "gateware
   already loaded, do not flash" path ran on the board.
+- **The disk request interrupt** (2026-10-28, package 0.4.0, gateware `2025.10-13-g943f37f-4303-CP300`): the overlay gives
+  `/dev/uio0` PLIC 126 (`/proc/interrupts`: `SiFive PLIC 126 ... cp300`), the daemon logs `disk requests by interrupt`, and
+  `/api/debug` shows `"irq": true` with `irqs` rising as the boot disk is read (6 interrupts for the first 2 requests, 0 errors).
+  The polling fallback was checked against the 0.2.0 gateware (unmask gives `EIO`).
 
 ## Not done / not verified
 
-0. **The 0.3.0 gateware on the board** (the interrupt arriving as PLIC 126, `"irq": true` and a rising `irqs` in `/api/debug`):
-   built, not yet flashed. The polling fallback was checked against the 0.2.0 gateware (unmask gives `EIO`).
 1. **The flash-and-reboot path of the installer** (`--force-flash`) and **another gateware and back** have not been run on a board.
 2. **Frame rate:** about 40 fps in the page against the 60 Hz hardware. The daemon's Python (zlib of the XOR frame, WebSocket) is
    the limit; the bulk read of a frame itself takes 1.5 ms.

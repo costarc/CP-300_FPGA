@@ -781,7 +781,10 @@ gateware builds, meets timing and boots the board; `/dev/uio0` appears and the I
 TRSDOS 1.3 from an uploaded disk image; a game plays; keyboard and sound work; the page works through nginx (`/cp300/`) and from the
 Cockpit sidebar; the installer's software path and its "already loaded, do not flash" path ran (all with package 0.2.0). For 0.3.0:
 the daemon's polling fallback against the 0.2.0 gateware (unmasking the UIO interrupt returns `EIO`); in simulation, the `PAGED`
-bridge (`sim/run_apb.sh`) and the key-frame request, the `seq` check and the non-intrusive probe (`host/test_cp300d.py`).
+bridge (`sim/run_apb.sh`) and the key-frame request, the `seq` check and the non-intrusive probe (`host/test_cp300d.py`). With
+package 0.4.0 (gateware `2025.10-13-g943f37f-4303-CP300`, which carries the 0.3.0 changes): the disk request interrupt arrives
+as PLIC 126 on `/dev/uio0`, the daemon serves disk requests by interrupt (`"irq": true` and a rising `irqs` in `/api/debug`,
+no request errors), and the frame rate the gateware reports is 63 per second.
 
 **Not verified:**
 
@@ -790,7 +793,6 @@ bridge (`sim/run_apb.sh`) and the key-frame request, the `seq` check and the non
 * A recovery with a FlashPro5/6 programmer.
 * Boards, kernels or stock gateware versions other than the above.
 * A build on the framework's officially supported Libero version (2025.2 or earlier) to remove the doubt about 2026.1.
-* The 0.3.0 gateware on a board: the interrupt arriving as PLIC 126 (`"irq": true` and a rising `irqs` in `/api/debug`).
 * The frame rate above about 40 fps.
 * The bridge's `PAGED` mode in hardware (simulated only; not used on this board).
 
