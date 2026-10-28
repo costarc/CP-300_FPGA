@@ -18,13 +18,14 @@
 	};
 };
 
-&{/} {
-	fabric-bus@40000000 {
-		cp300: cp300@41000000 {
-			compatible = "generic-uio";
-			reg = <0x0 0x41000000 0x0 0x100000>;
-			clocks = <&fabric_clk3>;
-			status = "okay";
-		};
+&{/fabric-bus@40000000} {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	cp300: cp300@41000000 {
+		compatible = "generic-uio";
+		reg = <0x0 0x41000000 0x0 0x100000>;
+		clocks = <&fabric_clk3>;
+		status = "okay";
 	};
 };

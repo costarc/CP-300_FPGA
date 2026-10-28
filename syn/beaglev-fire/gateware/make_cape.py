@@ -133,13 +133,18 @@ def main():
         shutil.copy(os.path.join(REPO, "rtl", "T80", n + ".vhd"), os.path.join(hdl, n + ".vhd"))
         t80.append(n + ".vhd")
 
+    # the framework imports the *.v files of the cape's HDL folder itself (MSS/scripts/hdl_source.tcl); the VHDL of
+    # the core and the PLL are added here
     base = "script_support/components/CAPE/CP300/HDL/"
     with open(os.path.join(tmpl, "ADD_CAPE.tcl")) as f:
         add = f.read()
     add = add.replace("VERILOG_TEMPLATE", "CP300")
-    add = re.sub(r"import_files -hdl_source \{[^}]*apb_ctrl_status\.v\}\n", "", add)
-    imports = CCC + "".join("import_files -hdl_source {%s%s}\n" % (base, n) for n in t80 + files)
-    add = add.replace("import_files -hdl_source {" + base + "P8_IOPADS.v}", imports + "import_files -hdl_source {" + base + "P8_IOPADS.v}", 1)
+    vhdl = [n for n in t80 + files if n.endswith(".vhd")]
+    imports = CCC + "".join("import_files -hdl_source {%s%s}\n" % (base, n) for n in vhdl) + "build_design_hierarchy\n\n"
+    marker = "create_hdl_core -file $project_dir/hdl/CAPE.v"
+    if marker not in add:
+        raise SystemExit("create_hdl_core line not found in the template ADD_CAPE.tcl")
+    add = add.replace(marker, imports + marker, 1)
     # PREADY and PSLVERR on the APB bus interface
     add = add.replace("hdl_core_add_bif -hdl_core_name {CAPE} -bif_definition {APB:AMBA:AMBA2:slave} -bif_name {BIF_1} -signal_map {} \n",
                       "hdl_core_add_bif -hdl_core_name {CAPE} -bif_definition {APB:AMBA:AMBA2:slave} -bif_name {BIF_1} -signal_map {} \n"
@@ -148,9 +153,9 @@ def main():
     with open(os.path.join(cape_dir, "ADD_CAPE.tcl"), "w") as f:
         f.write(add)
 
-    dts = os.path.join(cape_dir, "device-tree-overlay")
-    for n in os.listdir(dts):
-        os.remove(os.path.join(dts, n))
+    # the template's leds.dtso stays (the stock gateware has it too); its cape overlay is replaced
+    dts = os.path.join(cape_dir, "device-tree-overlays")
+    os.remove(os.path.join(dts, "verilog-cape.dtso"))
     shutil.copy(os.path.join(HERE, "CAPE", "CP300", "cp300.dtso"), os.path.join(dts, "cp300.dtso"))
     print("CP300 cape written to", cape_dir)
 
