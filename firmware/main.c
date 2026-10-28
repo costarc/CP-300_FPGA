@@ -1,4 +1,8 @@
-/* CP-300 FPGA IO controller firmware: SD card, on-screen menu.
+/* CP-300 FPGA IO controller firmware: SD card, ROM loading, on-screen menu.
+ *
+ * The system ROM (a *.ROM file, 14 or 16 KB, the machine) and the character generator
+ * (CHARGEN.BIN, 2 KB) are read from /CP300 on the SD card into the core's ROM RAMs while the
+ * CP-300 is held in reset. The machine is chosen in the menu (CP300.ROM, CP500.ROM ...).
  *
  * F12 opens the menu (PS/2 keys go to the menu, not the CP-300), Up/Down
  * move, Enter selects, Esc closes. Disk images and cassette files are the
@@ -26,6 +30,10 @@
 #define K_PGDN  7
 
 #define NDRIVES 4
+#define MACH    (NDRIVES + 1)          /* slot of the machine ROM file */
+#define NSLOT   (NDRIVES + 2)          /* mounted names kept: drives, cassette, machine */
+#define NITEMS  (NDRIVES + 3)          /* menu items: slots, then reset */
+#define ITEM_RESET (NDRIVES + 2)
 #define MAXLIST 40
 
 #define ST_CLOSED 0
@@ -43,14 +51,19 @@ static uint32_t cp300_dir;
 static uint8_t have_dir;
 
 /* mounted images, 8.3 names, blank = empty: drives 0-3, then the cassette */
-static char mount_name[NDRIVES + 1][11];
+static char mount_name[NSLOT][11];
 static file_t cfg_file;
 static uint8_t cfg_ok;
 
-static uint8_t sel;                  /* main menu selection, 0..5 */
-/* screen row of the selectable items: drives 0-3, cassette, reset */
-static const uint8_t item_row[NDRIVES + 2] = { 2, 3, 4, 5, 7, 9 };
-static uint8_t browse_target;        /* 0-3 drive, 4 cassette */
+static uint8_t sel;                  /* main menu selection, 0..6 */
+/* screen row of the selectable items: drives 0-3, cassette, machine, reset */
+static const uint8_t item_row[NITEMS] = { 2, 3, 4, 5, 7, 8, 10 };
+static uint8_t browse_target;        /* 0-3 drive, 4 cassette, 5 machine */
+
+/* ROM load state */
+static uint8_t rom_ok;
+static uint8_t rom_err;              /* 1 no ROM file, 2 SD read error, 3 no CHARGEN.BIN, 4 ROM too small */
+static char rom_name[11];
 static char list[MAXLIST][11];
 static uint8_t nlist;
 static uint8_t cursor;
@@ -65,6 +78,9 @@ static uint8_t drive_ok[NDRIVES];
 static const char cfg_magic[] = "C3";
 static const char ext_dsk[] = "DSK";
 static const char ext_cas[] = "CAS";
+static const char ext_rom[] = "ROM";
+static const char name_rom[] = "CP300   ROM";
+static const char name_chargen[] = "CHARGEN BIN";
 static const char dirname_cp300[] = "CP300      ";
 static const char cfgname[] = "CP300   CFG";
 
@@ -207,7 +223,7 @@ static void cfg_load(void)
 	dirent_t e;
 
 	cfg_ok = 0;
-	for (i = 0; i <= NDRIVES; i++)
+	for (i = 0; i < NSLOT; i++)
 		for (k = 0; k < 11; k++)
 			mount_name[i][k] = ' ';
 	if (!dir_find(cp300_dir, cfgname, &e) || e.size < 512)
@@ -218,9 +234,9 @@ static void cfg_load(void)
 		return;
 	if (sector[0] != cfg_magic[0] || sector[1] != cfg_magic[1])
 		return;
-	for (i = 0; i <= NDRIVES; i++)
+	for (i = 0; i < NSLOT; i++)
 		for (k = 0; k < 11; k++)
-			mount_name[i][k] = sector[2 + i * 11 + k];
+			mount_name[i][k] = sector[2 + i * 11 + k] ? sector[2 + i * 11 + k] : ' ';
 }
 
 static void cfg_save(void)
@@ -234,7 +250,7 @@ static void cfg_save(void)
 		sector[n] = 0;
 	sector[0] = cfg_magic[0];
 	sector[1] = cfg_magic[1];
-	for (i = 0; i <= NDRIVES; i++)
+	for (i = 0; i < NSLOT; i++)
 		for (k = 0; k < 11; k++)
 			sector[2 + i * 11 + k] = mount_name[i][k];
 	file_write(&cfg_file, 0, sector);
@@ -298,6 +314,69 @@ static void fdc_service(void)
 	}
 }
 
+/* copy size bytes of a file to the core's ROM RAM (target 0) or character generator (1) */
+static uint8_t rom_push(const dirent_t *e, uint8_t target, uint16_t size)
+{
+	file_t f;
+	uint16_t i, s;
+
+	file_open(&f, e);
+	ROM_CTL = target;
+	for (s = 0; s * 512 < size; s++) {
+		if (file_read(&f, s, sector))
+			return 1;
+		for (i = 0; i < 512; i++)
+			ROM_DATA = sector[i];
+	}
+	return 0;
+}
+
+/* the machine: the chosen ROM file, else CP300.ROM, else the first *.ROM */
+static uint8_t find_rom(dirent_t *e)
+{
+	dir_t d;
+	uint8_t k;
+
+	if (mount_name[MACH][0] != ' ' && dir_find(cp300_dir, mount_name[MACH], e))
+		return 1;
+	if (dir_find(cp300_dir, name_rom, e))
+		return 1;
+	dir_open(&d, cp300_dir);
+	while (dir_next(&d, e))
+		if (!(e->attr & ATTR_DIR) && e->name[8] == ext_rom[0] && e->name[9] == ext_rom[1] && e->name[10] == ext_rom[2])
+			return 1;
+	for (k = 0; k < 11; k++)
+		e->name[k] = ' ';
+	return 0;
+}
+
+/* load the machine ROM and the character generator; the core must be in reset */
+static void rom_load(void)
+{
+	dirent_t e;
+	uint8_t k;
+
+	rom_ok = 0;
+	rom_err = 0;
+	for (k = 0; k < 11; k++)
+		rom_name[k] = ' ';
+	if (!have_dir || !find_rom(&e))
+		rom_err = 1;
+	else if (e.size < 14336)
+		rom_err = 4;
+	else if (rom_push(&e, 0, e.size < 16384 ? (uint16_t)e.size : 16384))
+		rom_err = 2;
+	else {
+		for (k = 0; k < 11; k++)
+			rom_name[k] = e.name[k];
+		if (!dir_find(cp300_dir, name_chargen, &e) || e.size < 2048)
+			rom_err = 3;
+		else if (rom_push(&e, 1, 2048))
+			rom_err = 2;
+	}
+	rom_ok = !rom_err;
+}
+
 static void card_start(void)
 {
 	dirent_t e;
@@ -342,13 +421,29 @@ static void draw_main(void)
 	put(item_row[NDRIVES], 1, "CASSETTE:");
 	fmt_name(nm, mount_name[NDRIVES]);
 	put(item_row[NDRIVES], 11, nm);
-	put(item_row[NDRIVES + 1], 1, "RESET CP-300");
+	put(item_row[MACH], 1, "MACHINE:");
+	if (mount_name[MACH][0] == ' ')
+		put(item_row[MACH], 10, "(DEFAULT)");
+	else {
+		fmt_name(nm, mount_name[MACH]);
+		put(item_row[MACH], 10, nm);
+	}
+	put(item_row[ITEM_RESET], 1, "RESET CP-300");
+	if (rom_ok) {
+		put(12, 1, "ROM:");
+		fmt_name(nm, rom_name);
+		put(12, 6, nm);
+	}
 	if (!sd_ok) {
 		put(14, 1, "NO SD CARD, ERROR ");
 		scr[14][19] = '0' + sd_err / 10;
 		scr[14][20] = '0' + sd_err % 10;
 	} else if (!have_dir) {
 		put(14, 1, "NO /CP300 DIRECTORY");
+	} else if (rom_err) {
+		put(14, 1, rom_err == 1 ? "NO .ROM FILE IN /CP300" :
+		           rom_err == 3 ? "NO CHARGEN.BIN" :
+		           rom_err == 4 ? "ROM FILE TOO SMALL" : "ROM READ ERROR");
 	}
 	put(15, 1, "ENTER SELECT  ESC CLOSE");
 	inv_row = item_row[sel];
@@ -359,7 +454,7 @@ static void list_build(uint8_t target)
 {
 	dir_t d;
 	dirent_t e;
-	const char *ext = (target == NDRIVES) ? ext_cas : ext_dsk;
+	const char *ext = (target == NDRIVES) ? ext_cas : (target == MACH) ? ext_rom : ext_dsk;
 	uint8_t k;
 
 	nlist = 0;
@@ -384,7 +479,9 @@ static void draw_browse(void)
 	char nm[13];
 
 	clear_screen();
-	if (browse_target == NDRIVES) {
+	if (browse_target == MACH) {
+		put(0, 1, "SELECT MACHINE (ROM)");
+	} else if (browse_target == NDRIVES) {
 		put(0, 1, "SELECT CASSETTE FILE");
 	} else {
 		put(0, 1, "SELECT DISK FOR DRIVE");
@@ -395,7 +492,7 @@ static void draw_browse(void)
 		if (i >= nlist)
 			break;
 		if (i == 0)
-			put(2 + r, 1, "(EJECT)");
+			put(2 + r, 1, browse_target == MACH ? "(DEFAULT)" : "(EJECT)");
 		else {
 			fmt_name(nm, list[i]);
 			put(2 + r, 1, nm);
@@ -410,7 +507,7 @@ static void open_menu(void)
 {
 	if (!sd_ok)
 		card_start();
-	CTRL = CTRL_MENU;
+	CTRL = CTRL_MENU | (rom_ok ? 0 : CTRL_RESET);
 	state = ST_MAIN;
 	draw_main();
 }
@@ -418,7 +515,7 @@ static void open_menu(void)
 static void close_menu(void)
 {
 	osd_hide();
-	CTRL = 0;
+	CTRL = rom_ok ? 0 : CTRL_RESET;      /* without a ROM the CP-300 stays in reset */
 	state = ST_CLOSED;
 }
 
@@ -429,7 +526,8 @@ static void do_reset(void)
 	CTRL = CTRL_MENU | CTRL_RESET;
 	for (n = 0; n < 60000; n++)
 		;
-	CTRL = 0;
+	rom_load();                          /* the machine may have changed */
+	CTRL = rom_ok ? 0 : CTRL_RESET;
 }
 
 static void main_key(uint8_t k)
@@ -440,7 +538,7 @@ static void main_key(uint8_t k)
 			sel--;
 		break;
 	case K_DOWN:
-		if (sel < NDRIVES + 1)
+		if (sel < ITEM_RESET)
 			sel++;
 		break;
 	case K_ESC:
@@ -448,9 +546,9 @@ static void main_key(uint8_t k)
 		close_menu();
 		return;
 	case K_ENTER:
-		if (sel == NDRIVES + 1) {
-			close_menu();
+		if (sel == ITEM_RESET) {
 			do_reset();
+			close_menu();
 			return;
 		}
 		if (!have_dir)
@@ -516,9 +614,13 @@ void main(void)
 	DBG = 0x01;
 	dmk_init();
 	card_start();
-	/* LEDs: b0 card ok, b1 /CP300 found, b2 CP300.CFG found, b7:3 error code */
-	DBG = sd_ok | (have_dir << 1) | (cfg_ok << 2) | (sd_err << 3);
-	CTRL = 0;                /* release the CP-300, it has been held in reset since power-on */
+	if (have_dir)
+		rom_load();
+	/* LEDs: b0 card ok, b1 /CP300 found, b2 CP300.CFG found, b7:3 error code (SD, or 16 + ROM) */
+	DBG = sd_ok | (have_dir << 1) | (cfg_ok << 2) | ((sd_err ? sd_err : rom_err ? 16 + rom_err : 0) << 3);
+	CTRL = rom_ok ? 0 : CTRL_RESET;   /* release the CP-300 (held in reset since power-on) only with a ROM */
+	if (!rom_ok)
+		open_menu();
 	for (;;) {
 		fdc_service();
 		k = key_get();

@@ -6,7 +6,7 @@
 //  into a CP-300 (Model III compatible), running
 //  stand-alone on the DE0 without the MiST ARM controller:
 //    - 50 MHz -> 42 MHz PLL
-//    - CP-300 ROM: four 2732 EPROM images + 2716 character generator in M9K
+//    - system ROM and character generator: RAMs in M9K, loaded from the SD card at start-up
 //    - PS/2 keyboard straight from the DE0 PS/2 port
 //    - MiST scandoubler for 31 kHz VGA on the 4-bit DE0 DAC (OSD unused)
 //
@@ -144,7 +144,11 @@ wire        exp_in, exp_out, exp_oe;
 wire [12:0] sdram_a;
 wire  [1:0] sdram_ba;
 
-ht1080z ht1080z (
+wire        rl_we;
+wire [12:0] rl_waddr;
+wire [31:0] rl_wdata;
+
+ht1080z_rt ht1080z (
 	.clk42m (clk42),
 	.pllLocked(pll_locked),
 	.reset(reset),
@@ -208,7 +212,12 @@ ht1080z ht1080z (
 	.SDRAM_nCAS(DRAM_CAS_N),
 	.SDRAM_nRAS(DRAM_RAS_N),
 	.SDRAM_BA(sdram_ba),
-	.SDRAM_CKE(DRAM_CKE)
+	.SDRAM_CKE(DRAM_CKE),
+
+	.rl_clk(clk42),
+	.rl_we(rl_we),
+	.rl_waddr(rl_waddr),
+	.rl_wdata(rl_wdata)
 );
 
 assign DRAM_ADDR = sdram_a;
@@ -249,6 +258,9 @@ io_ctrl io_ctrl (
 	.ps2clk(PS2_KBCLK),
 	.ps2dat(PS2_KBDAT),
 	.ext_keys(ext_keys_raw),
+	.rl_we(rl_we),
+	.rl_waddr(rl_waddr),
+	.rl_wdata(rl_wdata),
 	.menu_open(menu_open),
 	.core_rst(core_rst),
 	.dbg(io_dbg),

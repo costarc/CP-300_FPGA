@@ -228,7 +228,11 @@ wire  [1:0] sd_ba;
 wire [15:0] sd_dq;
 wire        sd_dqmh, sd_dqml, sd_cke;
 
-ht1080z #(.EXT_RAM(1'b1)) ht1080z (
+wire        rl_we;
+wire [12:0] rl_waddr;
+wire [31:0] rl_wdata;
+
+ht1080z #(.EXT_RAM(1'b1), .RUNTIME_ROM(1'b1)) ht1080z (
 	.clk42m (clk42),
 	.pllLocked(pll_locked),
 	.reset(reset),
@@ -305,7 +309,12 @@ ht1080z #(.EXT_RAM(1'b1)) ht1080z (
 	.SDRAM_nCAS(sd_nCAS),
 	.SDRAM_nRAS(sd_nRAS),
 	.SDRAM_BA(sd_ba),
-	.SDRAM_CKE(sd_cke)
+	.SDRAM_CKE(sd_cke),
+
+	.rl_clk(clk42),
+	.rl_we(rl_we),
+	.rl_waddr(rl_waddr),
+	.rl_wdata(rl_wdata)
 );
 
 // 9600 8N1, ports E8-EA (USB serial of the board)
@@ -342,6 +351,9 @@ io_ctrl #(.CPU_HALF(1'b1)) io_ctrl (
 	.ps2clk(ps2_clk),
 	.ps2dat(ps2_dat),
 	.ext_keys(ext_keys_raw),
+	.rl_we(rl_we),
+	.rl_waddr(rl_waddr),
+	.rl_wdata(rl_wdata),
 	.menu_open(menu_open),
 	.core_rst(core_rst),
 	.dbg(io_dbg),

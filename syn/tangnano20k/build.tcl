@@ -1,5 +1,5 @@
 # Gowin command line build:  gw_sh build.tcl   (run in this folder)
-# Needs the ROM package roms/cp300_roms_pkg.vhd (tools/mkroms.py) and the submodules.
+# Needs the submodules. The ROMs are loaded from the SD card (no ROM package).
 set root ../..
 set tang $root/rtl/tang
 
@@ -16,7 +16,7 @@ add_file -type verilog $tang/sync_stable.v
 add_file -type verilog $tang/dvi_tx.v
 add_file -type verilog $tang/osd.v
 
-add_file -type vhdl $root/roms/cp300_roms_pkg.vhd
+add_file -type vhdl $root/syn/analogue/src/fpga/core/cp300_roms_stub.vhd
 add_file -type vhdl $root/rtl/cp300/cp300_rom.vhd
 add_file -type vhdl $root/rtl/kbd/matrix_kbd.vhd
 add_file -type vhdl $root/rtl/fdc/wd1793.vhd

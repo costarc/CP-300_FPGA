@@ -17,6 +17,8 @@ __sfr __at(0x05) GLYPH_ROW;  /* r: next pixel column of the selected glyph (OSD 
 __sfr __at(0x06) GLYPH_SEL;  /* w: select glyph */
 __sfr __at(0x07) ID;         /* r: A5 */
 __sfr __at(0x08) DBG;        /* w: debug byte, reported by the simulation */
+__sfr __at(0x18) ROM_CTL;    /* w: start a ROM load: 0 system ROM, 1 character generator */
+__sfr __at(0x19) ROM_DATA;   /* w: next byte of the image */
 __sfr __at(0x10) FDC_REQ;    /* r: b0 read sector, b1 write sector, b2 read address, b3 side, b5:4 drive, b6 deleted mark */
 __sfr __at(0x11) FDC_TRK;    /* r: head position */
 __sfr __at(0x12) FDC_TRKREG; /* r: track register */

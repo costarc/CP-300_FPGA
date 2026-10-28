@@ -26,6 +26,9 @@
 --   14  rw: sector buffer data port, auto-increment (write fills it for a read request, read
 --       empties it for a write request)
 --   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected
+--   18  w: start a ROM load: b0 = 0 system ROM (16 KB), 1 character generator (2 KB); the pointer goes to 0
+--   19  w: next byte of the ROM image (four bytes make a word for the core's ROM RAM, rl_*; a
+--       character generator load also fills the OSD font)
 --   16  w: result of the request, read by the controller when the acknowledge drops:
 --       b0 sector found, b1 CRC error, b2 deleted data mark
 
@@ -33,7 +36,6 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 use work.io_fw_pkg.all;
-use work.cp300_roms_pkg.CHARGEN_900_65;
 
 entity io_ctrl is
   generic (
@@ -53,6 +55,11 @@ entity io_ctrl is
     ps2clk    : in  std_logic;
     ps2dat    : in  std_logic;
     ext_keys  : in  std_logic_vector(63 downto 0);   -- original keyboard matrix (8 * row + column), menu keys
+
+    -- ROM loader: the core's ROM RAMs are filled from the SD card (see cp300_rom, videoctrl)
+    rl_we     : out std_logic;
+    rl_waddr  : out std_logic_vector(12 downto 0);
+    rl_wdata  : out std_logic_vector(31 downto 0);
 
     menu_open : out std_logic;
     core_rst  : out std_logic;
@@ -138,6 +145,18 @@ architecture rtl of io_ctrl is
   type grows_t is array (0 to 7) of std_logic_vector(7 downto 0);
   signal grows   : grows_t := (others => (others => '0'));
   signal gcolbyte : std_logic_vector(7 downto 0);
+  type chram_t is array (0 to 2047) of std_logic_vector(7 downto 0);
+  signal chram   : chram_t := (others => (others => '0'));
+
+  -- ROM loader
+  signal rl_tgt  : std_logic := '0';
+  signal rl_ptr  : unsigned(11 downto 0) := (others => '0');
+  signal rl_cnt  : unsigned(1 downto 0) := (others => '0');
+  signal rl_sh   : std_logic_vector(23 downto 0) := (others => '0');
+  signal rl_bidx : unsigned(10 downto 0) := (others => '0');
+  signal rl_we_r : std_logic := '0';
+  signal rl_wa_r : std_logic_vector(12 downto 0) := (others => '0');
+  signal rl_wd_r : std_logic_vector(31 downto 0) := (others => '0');
 
 begin
 
@@ -213,7 +232,7 @@ begin
   process(clk)
   begin
     if rising_edge(clk) then
-      gdata <= CHARGEN_900_65(to_integer(glyph & fcnt(2 downto 0)));
+      gdata <= chram(to_integer(glyph & fcnt(2 downto 0)));
       if fcnt < 10 then
         -- gdata is the line fetched one clock ago, i.e. line fcnt - 1
         if fcnt >= 1 and fcnt <= 8 then grows(to_integer(fcnt) - 1) <= gdata; end if;
@@ -229,6 +248,33 @@ begin
   colbits : for y in 0 to 7 generate
     gcolbyte(y) <= grows(y)(7 - to_integer(gcol));
   end generate;
+
+  -- ROM loader: bytes pushed to port 19 are packed into words (first byte = bits 31:24)
+  process(clk)
+  begin
+    if rising_edge(clk) then
+      rl_we_r <= '0';
+      if cen = '1' and wrp = '1' then
+        if port_a = x"18" then
+          rl_tgt <= cpu_do(0); rl_ptr <= (others => '0'); rl_cnt <= (others => '0'); rl_bidx <= (others => '0');
+        elsif port_a = x"19" then
+          rl_sh <= rl_sh(15 downto 0) & cpu_do;
+          rl_cnt <= rl_cnt + 1;
+          if rl_tgt = '1' then
+            chram(to_integer(rl_bidx)) <= cpu_do;
+            rl_bidx <= rl_bidx + 1;
+          end if;
+          if rl_cnt = 3 then
+            rl_we_r <= '1';
+            rl_wa_r <= rl_tgt & std_logic_vector(rl_ptr);
+            rl_wd_r <= rl_sh & cpu_do;
+            rl_ptr <= rl_ptr + 1;
+          end if;
+        end if;
+      end if;
+    end if;
+  end process;
+  rl_we <= rl_we_r; rl_waddr <= rl_wa_r; rl_wdata <= rl_wd_r;
 
   -- SPI master, mode 0, MSB first
   process(clk)

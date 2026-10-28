@@ -35,7 +35,7 @@ Resources: 7,359 of 15,408 logic elements (48%), 430,208 of 516,096 memory bits 
 
 ## Quick start
 
-1. **ROMs.** Put the five CP-300 ROM dumps in `roms/` ([roms/README.md](roms/README.md) lists the file names and checksums). They are copyrighted and not part of this repository.
+1. **ROMs.** The ROMs are not in the FPGA image: every board loads them from the SD card. Put a system ROM (`CP300.ROM`, or the CP-500 ones) and `CHARGEN.BIN` in `/CP300` on the card ([Machines](#machines)). They are copyrighted and not part of this repository.
 2. **Build** the FPGA image ([Building](#building-from-the-command-line)) or use a prebuilt `cp300_de0.sof` / `cp300_de0.pof`.
 3. **Program the DE0:**
    - `cp300_de0.sof`: Quartus Programmer, mode JTAG. Lost at power-off. RUN/PROG switch on RUN.
@@ -62,6 +62,19 @@ Press **F12** on the PS/2 keyboard, or **SHIFT + BREAK** on the original keyboar
 The menu lists **Drive 0-3**, the **cassette** file (selection only, playback is not done yet) and **Reset CP-300**. Choosing a drive shows the `*.DSK` files in `/CP300`; picking one mounts it at once, like swapping a floppy, and `(EJECT)` removes the disk. After mounting a boot disk in Drive 0, choose **Reset CP-300**.
 
 To keep the selection across power-offs, create a 512-byte file `/CP300/CP300.CFG` (any content, for example 512 zero bytes). The menu then saves the selected names in it.
+
+### Machines
+
+The machine is the system ROM, a file in `/CP300` with the extension `.ROM` (16 KB, or 14 KB for a plain Model III ROM), plus the character generator `CHARGEN.BIN` (2 KB, the same on the CP-300 and CP-500). They are read from the SD card into the core while it is held in reset, at power-on and at **Reset CP-300**. The menu item **MACHINE** lists the `*.ROM` files; picking one is saved in `CP300.CFG` and takes effect at the next reset. `(DEFAULT)` uses `CP300.ROM`, or else the first `.ROM` in the folder. Without a ROM the CP-300 stays in reset and the menu says why.
+
+| File on the SD card | Source |
+|---|---|
+| `CP300.ROM` | `27C128cp300.BIN` (CP-300) |
+| `CP500.ROM` | `cp500.rom` (CP-500, M80) |
+| `CP500P24.ROM` | `27c128.BIN` of the CP-500 P24 / Turbo set (same file) |
+| `CHARGEN.BIN` | `2716cp300.BIN` (also the CP-500 2716) |
+
+The BASIC ROM (0000-37FF) of the CP-300 and the CP-500 is the same code (the CP-500 P24 differs by two bytes at 01E1); the CP-500 differences are in the upper 2 KB, which the CPU cannot reach at 3800-3FFF. A genuine TRS-80 Model III ROM (14 KB, for example one built from [kiwisincebirth/TRS-80-ROMS](https://github.com/kiwisincebirth/TRS-80-ROMS)) uses the same hardware and should run as a `.ROM` file. The CP-500 M80's 80-column video board is not modelled.
 
 ### Disk images
 
