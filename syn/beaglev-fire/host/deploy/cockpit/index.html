@@ -6,12 +6,14 @@
   body { font: 16px system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
   a.open { display: inline-block; padding: .6rem 1.2rem; border-radius: 4px; background: #0066cc; color: #fff; text-decoration: none; }
   #state { margin-top: 1.5rem; color: #555; }
+  code { background: #eee; padding: 0 .25em; }
 </style>
 <h1>CP-300</h1>
 <p>The Prológica CP-300 (TRS-80 Model III) runs in the FPGA; the screen, keyboard, sound and disks are in the browser.</p>
 <!-- Cockpit is served over https on port 9090; the CP-300 page is on the stock web server (port 80), so it opens in its own tab -->
 <p><a class="open" id="open" target="_blank" rel="noopener">Open the CP-300</a></p>
 <p id="state">checking the daemon...</p>
+<p style="color:#555">If another gateware was flashed, load the CP-300 one again with <code>sudo cp300-load-gateware</code> on the board (it reboots).</p>
 <script>
   var url = "http://" + location.hostname + "/cp300/";
   document.getElementById("open").href = url;
