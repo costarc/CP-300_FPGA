@@ -58,7 +58,16 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 ### Machines
 
-The machine is whatever system ROM is in the *System ROM* slot: pick `CP500.ROM` (or the CP-500 P24 / Turbo `27c128.BIN`, or a 14 KB TRS-80 Model III ROM) instead of the CP-300's `27C128cp300.BIN` in *Core Settings*, then choose **Reset CP-300**. The character generator (*Character ROM*) is the same on all of them. This is the same model as the DE0 (`MACHINE` menu item, see the top-level README); the BASIC ROM is identical code, only the upper 2 KB differs and is not reachable by the CPU.
+The machine is whatever system ROM is in the *System ROM* slot: pick `CP500.ROM` (or the CP-500 P24 / Turbo `27c128.BIN`, or a 14 KB TRS-80 Model III ROM) instead of the CP-300's `27C128cp300.BIN` in *Core Settings*, then choose **Reset CP-300**. The character generator (*Character ROM*, `2716cp300.BIN`) is the same on all of them; for a machine with other glyphs pick its own file there too. Names to keep in `Assets/cp300/common/`:
+
+| Machine | System ROM, source file | Character generator |
+|---|---|---|
+| CP-300 | `27C128cp300.BIN` | `2716cp300.BIN` |
+| CP-500 | `cp500.rom` (also `CP500M80_27128.bin`) | `2716cp300.BIN` |
+| CP-500 P24 / Turbo | `27c128.BIN` / `CP-500 Turbo 27128.Bin` (same file) | `2716cp300.BIN` |
+| TRS-80 Model III (14 KB, 0000-37FF) | `TRS80M3.ROM` | its own `.rom` / `.bin` if its glyphs differ |
+
+(The Pocket takes any file name, because you pick the file; DE0 and Tang names are `NAME.ROM` / `NAME.CHR`.) This is the same model as the DE0 (`MACHINE` menu item, see the top-level README); the BASIC ROM is identical code, only the upper 2 KB differs and is not reachable by the CPU.
 
 ### ROMs
 

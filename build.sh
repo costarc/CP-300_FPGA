@@ -1,9 +1,9 @@
 #!/bin/sh
 # Command line build of the CP-300 FPGA.
 #
-#   ./build.sh [all | roms | firmware | fpga | test ...]      (default: all = roms firmware fpga)
+#   ./build.sh [all | roms | firmware | fpga | test ...]      (default: all = firmware fpga)
 #
-#   roms      python tools/mkroms.py          roms/*.BIN -> roms/cp300_roms_pkg.vhd
+#   roms      python tools/mkroms.py          roms/*.BIN -> roms/cp300_roms_pkg.vhd (simulation only)
 #   firmware  firmware/build.sh               IO controller C code -> rtl/io/io_fw_pkg.vhd (SDCC 4.6)
 #   fpga      quartus_sh --flow compile       syn/de0/output_files/cp300_de0.sof and cp300_de0.pof
 #   test      the PC tests (disk converter, FAT code, keyboard matrix scanner)
@@ -15,7 +15,7 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 cd "$ROOT"
 
 steps=${*:-all}
-case " $steps " in *" all "*) steps="roms firmware fpga" ;; esac
+case " $steps " in *" all "*) steps="firmware fpga" ;; esac
 
 # quartus_sh: on the PATH, QUARTUS_BIN, or the usual Windows install
 quartus() {
@@ -39,7 +39,6 @@ for step in $steps; do
       ;;
     fpga)
       echo "== Quartus compile (a few minutes)"
-      [ -f roms/cp300_roms_pkg.vhd ] || { echo "error: roms/cp300_roms_pkg.vhd missing: run ./build.sh roms" >&2; exit 1; }
       (cd syn/de0 && quartus --flow compile cp300_de0)
       out=syn/de0/output_files
       grep -E "Fitter Status|Total logic elements|Total memory bits" "$out/cp300_de0.fit.summary" || true

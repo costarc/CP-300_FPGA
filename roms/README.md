@@ -1,5 +1,29 @@
 # ROMs
 
+## ROM file names per platform
+
+| Platform | Where | System ROM | Character generator |
+|---|---|---|---|
+| DE0 | SD card, folder `/CP300` | any `NAME.ROM` (8.3 name), chosen in the menu item MACHINE; default `CP300.ROM` | `NAME.CHR` of the chosen ROM, else `CHARGEN.BIN` |
+| Tang Nano 9K / 20K | SD card, folder `/CP300` | same as the DE0 | same as the DE0 |
+| Analogue Pocket | `Assets/cp300/common/` | *System ROM* slot: `27C128cp300.BIN` by default, or any `.rom` / `.bin` picked in Core Settings | *Character ROM* slot: `2716cp300.BIN` by default, or any `.rom` / `.bin` picked |
+| MiSTer | not built yet | | |
+
+The file names to use for each machine:
+
+| Machine | System ROM, source file | Character generator |
+|---|---|---|
+| CP-300 | `CP300.ROM` = `27C128cp300.BIN` | `CHARGEN.BIN` = `2716cp300.BIN` |
+| CP-500 | `CP500.ROM` = `cp500.rom` (also `CP500M80_27128.bin`) | shared `CHARGEN.BIN` |
+| CP-500 P24 / Turbo | `CP500P24.ROM` = `27c128.BIN` / `CP-500 Turbo 27128.Bin` (same file) | shared `CHARGEN.BIN` |
+| TRS-80 Model III (14 KB, 0000-37FF) | `TRS80M3.ROM` | `TRS80M3.CHR` if its glyphs differ, else the shared one |
+
+The ROM images are copyrighted: they are never part of the repository or of a bitstream.
+
+## ROM dumps for building and simulation
+
+The FPGA images contain no ROM. The files below are only for the GHDL simulation (`sim/`) and for `tools/mkpocketrom.py`.
+
 ROM images are copyrighted and are not part of this repository. Put the dumps from a CP-300 board here:
 
 | File | Chip | Board position | Address |

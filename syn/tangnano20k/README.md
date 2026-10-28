@@ -36,7 +36,7 @@ All paths are the ones on the development machine; the versions are the ones the
 
 ## Build
 
-Needs the ROM package `roms/cp300_roms_pkg.vhd` ([roms/README.md](../../roms/README.md)) and the git submodules
+Needs the git submodules (no ROM files)
 (`git submodule update --init`).
 
 ```
@@ -46,7 +46,7 @@ python check_9k_limits.py     # fails if the 9K's resources are exceeded
 ```
 
 Takes about two minutes. Results in `impl/pnr/`: `cp300_tn20k.fs` (bitstream), `cp300_tn20k.rpt.txt` (resources) and `cp300_tn20k.tr` (timing).
-The ROMs and the IO controller firmware are inside the bitstream.
+The IO controller firmware is inside the bitstream; the ROMs are not. Put them on the SD card in `/CP300`: `CP300.ROM` (system ROM, or `CP500.ROM`, `CP500P24.ROM`, `TRS80M3.ROM`, chosen in the menu item MACHINE) and `CHARGEN.BIN` (or `NAME.CHR` for a machine of its own). See [roms/README.md](../../roms/README.md).
 
 Last build: 6814 logic cells (the 9K has 8640), 2063 registers (6771), 26 block RAMs (26), 2 PLLs (2); clk42 77 MHz (42 needed).
 
