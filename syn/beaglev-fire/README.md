@@ -74,9 +74,9 @@ Open `http://<board>/cp300/`.
 1. **First time:** choose the two ROM files in the *ROMs* panel. They are kept on the board.
 2. **Disks:** drop an image on a drive (or *Choose file*). Drive 0 is the boot drive. Changes made by the CP-300 are written
    back to the image on the board every two seconds; *Download* gives the image as DMK.
-   The two **FreeHD hard disks** (version 0.3.0) are cards under the drives: drop an `.hdv` image on one (the daemon calls
+   The two **FreeHD hard disks** (version 0.4.0) are cards under the drives: drop an `.hdv` image on one (the daemon calls
    `PUT /api/hd/0` and `/api/hd/1`); the image is used as it is and *Download* gives it back. The FreeHD ports (`C0`-`CF`)
-   answer only while an image is mounted. **Needs the gateware of 0.3.0**: the package 0.2.0 on the board has no hard disk;
+   answer only while an image is mounted. **Needs the gateware of 0.4.0**: the package 0.3.0 has no hard disk;
    the sources (`rtl/bvf_regs.v`, `bvf_dataslot.v`) are changed and pass the simulation, but the bitstream was not rebuilt.
 3. Click the screen and type. **Esc** = BREAK, **Backspace** and **Left** = left arrow, **Home** = CLEAR. The browser maps
    characters, not physical keys (`"` presses the CP-300's shifted 2). An on-screen keyboard is below the screen.

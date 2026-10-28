@@ -55,6 +55,30 @@
                 "address": "0x00000000"
             },
             {
+                "name": "Hard disk 0 (FreeHD)",
+                "id": 6,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": [
+                    "hdv"
+                ],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            },
+            {
+                "name": "Hard disk 1 (FreeHD)",
+                "id": 7,
+                "required": false,
+                "deferload": true,
+                "parameters": "0x201",
+                "extensions": [
+                    "hdv"
+                ],
+                "size_maximum": "0x1000000",
+                "address": "0x00000000"
+            },
+            {
                 "name": "System ROM (16 KB)",
                 "id": 4,
                 "required": true,

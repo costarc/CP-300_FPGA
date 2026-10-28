@@ -81,7 +81,7 @@ To run a BASIC program from a disk with TRSDOS 1.3: at `TRSDOS Ready` type `BASI
 
 ### Hard disks (FreeHD)
 
-Version 0.3.0 adds the hard disk interface the TRS-80 community knows as **FreeHD / FreHD** (a Radio Shack style WD1010 controller at ports `C0`-`CF`, the same one the xtrs emulator and Matthew Reed's emulators provide). Two hard disks, each an **`.HDV`** image: a 256-byte header (`56 CB 10 ...`, the format of xtrs and TRS32) followed by 256-byte sectors, 32 per track. Images made for xtrs, TRS32 or a real FreHD card's SD work as they are; cylinders, heads and the write-protect flag come from the header.
+Version 0.4.0 adds the hard disk interface the TRS-80 community knows as **FreeHD / FreHD** (a Radio Shack style WD1010 controller at ports `C0`-`CF`, the same one the xtrs emulator and Matthew Reed's emulators provide). Two hard disks, each an **`.HDV`** image: a 256-byte header (`56 CB 10 ...`, the format of xtrs and TRS32) followed by 256-byte sectors, 32 per track. Images made for xtrs, TRS32 or a real FreHD card's SD work as they are; cylinders, heads and the write-protect flag come from the header.
 
 | Port | |
 |---|---|
@@ -108,7 +108,7 @@ A reset (power-on, the menu's **Reset CP-300**) now clears the video RAM to spac
 
 ### Version
 
-The core version is in [VERSION](VERSION) (also `syn/analogue/core.json`). 0.3.0: FreeHD hard disk interface, reset clears the screen, data slot change reports made reliable on the Pocket. 0.2.0: BeagleV-Fire package. 0.1.0: first Pocket release.
+The core version is in [VERSION](VERSION) (also `syn/analogue/core.json`). 0.4.0: FreeHD hard disk interface, reset clears the screen, data slot change reports made reliable on the Pocket. 0.3.0: BeagleV-Fire package (disk interrupt, frame resync), Pocket "Eject all disks". 0.2.0: BeagleV-Fire package. 0.1.0: first Pocket release.
 
 ## Simulation and tests
 

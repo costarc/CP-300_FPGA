@@ -47,4 +47,4 @@ Result: `output_files/CP300.rbf`. The helper firmware (`core/io_fw_pkg.vhd`) is 
 
 ## State
 
-Compiles and **tested on a real MiSTer** (the FreeHD hard disks added in 0.3.0 are new and have not been tried on one yet). Points to keep an eye on: the DMK write path and the 1.6 s mount delay, video timing on the scaler, USB keyboard through the HPS PS/2 emulation, audio level. Not done: cassette, joystick, the on-screen keyboard of the Pocket.
+Compiles and **tested on a real MiSTer** (the FreeHD hard disks added in 0.4.0 are new and have not been tried on one yet). Points to keep an eye on: the DMK write path and the 1.6 s mount delay, video timing on the scaler, USB keyboard through the HPS PS/2 emulation, audio level. Not done: cassette, joystick, the on-screen keyboard of the Pocket.
