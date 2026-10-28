@@ -20,7 +20,7 @@ own source (`CAPE.v`, `ADD_CAPE.tcl`) could not be read (openbeagle.org is behin
 
 1. The cape's APB window: base address, size, address width, whether PREADY/PSLVERR exist. `apb_regbus` wants
    20 address bits; with less use `PAGED = 1` (page register at window offset 0xFFC, 4 KB pages) and change
-   `daemon/cp300d.py` `MemRegs` to write the page register before each access.
+   `host/cp300d.py` `MemRegs` to write the page register before each access.
 2. The clock the cape APB runs on (PCLK) and whether a 42 MHz clock for the core can come from the framework's
    clock block. If not, a PolarFire CCC / PF_CCC instance in `ADD_CAPE.tcl` is needed (the configuration
    script of the framework's own CCC is the model; it is the part that failed on 2024.1).
