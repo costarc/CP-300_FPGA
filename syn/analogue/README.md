@@ -56,6 +56,10 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 **Troubleshooting.** Disk status shows 0 for a drive: the file is not a DMK with 256-byte sectors (convert with `tools/dsk2dmk.py`). `Diskette?` or a hang at boot: choose the file again and Reset CP-300. Disk errors under load: see *Disk speed* in the known limits.
 
+### Machines
+
+The machine is whatever system ROM is in the *System ROM* slot: pick `CP500.ROM` (or the CP-500 P24 / Turbo `27c128.BIN`, or a 14 KB TRS-80 Model III ROM) instead of the CP-300's `27C128cp300.BIN` in *Core Settings*, then choose **Reset CP-300**. The character generator (*Character ROM*) is the same on all of them. This is the same model as the DE0 (`MACHINE` menu item, see the top-level README); the BASIC ROM is identical code, only the upper 2 KB differs and is not reachable by the CPU.
+
 ### ROMs
 
 The ROM set widely shared for the CP-300 (`roms_cp300.zip`: `27C128cp300.BIN` and `2716cp300.BIN`) works **as it is**: unzip it into `Assets/cp300/common/`, no conversion. (Checked: the two files are byte-identical to the 900-61..64 dumps in a row and to 900-65.)
