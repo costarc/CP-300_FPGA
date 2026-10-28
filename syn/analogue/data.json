@@ -58,7 +58,7 @@
                 "name": "System ROM (16 KB)",
                 "id": 4,
                 "required": true,
-                "parameters": "0x200",
+                "parameters": "0x201",
                 "filename": "27C128cp300.BIN",
                 "extensions": [
                     "rom",
@@ -71,7 +71,7 @@
                 "name": "Character ROM (2 KB)",
                 "id": 5,
                 "required": true,
-                "parameters": "0x200",
+                "parameters": "0x201",
                 "filename": "2716cp300.BIN",
                 "extensions": [
                     "rom",

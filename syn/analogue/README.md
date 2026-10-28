@@ -58,7 +58,7 @@ The Pocket's *Display Mode* menu offers the scaler modes: 4:3 (default, tall pix
 
 ### Machines
 
-The machine is whatever system ROM is in the *System ROM* slot: pick `CP500.ROM` (or the CP-500 P24 / Turbo `27c128.BIN`, or a 14 KB TRS-80 Model III ROM) instead of the CP-300's `27C128cp300.BIN` in *Core Settings*, then choose **Reset CP-300**. The character generator (*Character ROM*, `2716cp300.BIN`) is the same on all of them; for a machine with other glyphs pick its own file there too. Names to keep in `Assets/cp300/common/`:
+The machine is whatever system ROM is in the *System ROM* slot. Open the Pocket's **Core Settings** menu, choose *System ROM (16 KB)* (and *Character ROM (2 KB)* if the machine needs its own), pick the file, then choose **Reset CP-300**. (Both slots are user-reloadable, like the four drives.) For example, pick `CP500.ROM` (or the CP-500 P24 / Turbo `27c128.BIN`, or a 14 KB TRS-80 Model III ROM) instead of the CP-300's `27C128cp300.BIN` in *Core Settings*, then choose **Reset CP-300**. The character generator (*Character ROM*, `2716cp300.BIN`) is the same on all of them; for a machine with other glyphs pick its own file there too. Names to keep in `Assets/cp300/common/`:
 
 | Machine | System ROM, source file | Character generator |
 |---|---|---|
