@@ -24,6 +24,7 @@ GW_ROOT=/usr/share/beagleboard/gateware
 GW_DIR=$GW_ROOT/cp300
 CHANGE_GW=$GW_ROOT/change-gateware.sh
 NGINX_SITE=/etc/nginx/sites-enabled/default
+NGINX_BACKUP=/etc/nginx/cp300-default-site.backup     # not in sites-enabled: nginx loads everything in there
 HOST=$OPT/syn/beaglev-fire/host
 
 YES=0
@@ -128,8 +129,10 @@ install_web() {
 	install -m 644 "$SELF/deploy/cp300d.service" /etc/systemd/system/cp300d.service
 
 	install -m 644 "$SELF/deploy/cp300.nginx.conf" /etc/nginx/snippets/cp300.conf
+	# 0.1.0 left its backup inside sites-enabled, which nginx loads (duplicate default server): remove it
+	rm -f "$NGINX_SITE.cp300-backup"
 	if ! grep -q "snippets/cp300.conf" "$NGINX_SITE"; then
-		[ -e "$NGINX_SITE.cp300-backup" ] || cp -L "$NGINX_SITE" "$NGINX_SITE.cp300-backup"
+		[ -e "$NGINX_BACKUP" ] || cp -L "$NGINX_SITE" "$NGINX_BACKUP"
 		sed -i --follow-symlinks '0,/^[[:space:]]*server_name .*;/s//&\n\tinclude snippets\/cp300.conf;/' "$NGINX_SITE"
 		grep -q "snippets/cp300.conf" "$NGINX_SITE" || die "could not add the CP-300 link to $NGINX_SITE"
 	fi
@@ -175,6 +178,7 @@ uninstall() {
 	rm -f /etc/systemd/system/cp300d.service /etc/udev/rules.d/99-cp300-uio.rules /usr/local/sbin/cp300-load-gateware
 	systemctl daemon-reload
 	if [ -f "$NGINX_SITE" ]; then sed -i --follow-symlinks '/snippets\/cp300.conf/d' "$NGINX_SITE"; fi
+	rm -f "$NGINX_SITE.cp300-backup" "$NGINX_BACKUP"
 	rm -f /etc/nginx/snippets/cp300.conf
 	nginx -t && systemctl reload nginx || true
 	rm -rf /usr/share/cockpit/cp300 "$OPT" "$GW_DIR"
