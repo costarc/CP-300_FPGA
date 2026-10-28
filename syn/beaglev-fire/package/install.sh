@@ -142,7 +142,7 @@ install_web() {
 	# the sidebar entry is replaced on every run
 	rm -rf /usr/share/cockpit/cp300
 	mkdir -p /usr/share/cockpit/cp300
-	cp "$SELF/deploy/cockpit/manifest.json" "$SELF/deploy/cockpit/index.html" /usr/share/cockpit/cp300/
+	cp "$SELF"/deploy/cockpit/* /usr/share/cockpit/cp300/
 
 	install -m 755 "$SELF/cp300-load-gateware" /usr/local/sbin/cp300-load-gateware
 
