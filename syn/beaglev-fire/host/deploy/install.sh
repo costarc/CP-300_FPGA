@@ -8,6 +8,7 @@ TREE=$(cd "$HERE/../../../.." && pwd)
 mkdir -p /opt/cp300
 cp -r "$TREE/syn" "$TREE/tools" /opt/cp300/
 chown -R root:root /opt/cp300
+gcc -O2 -shared -fPIC -o /opt/cp300/syn/beaglev-fire/host/regs32.so /opt/cp300/syn/beaglev-fire/host/regs32.c
 
 # the daemon runs as beagle (member of kmem): let that group use the UIO device
 echo 'SUBSYSTEM=="uio", GROUP="kmem", MODE="0660"' > /etc/udev/rules.d/99-cp300-uio.rules

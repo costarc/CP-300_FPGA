@@ -12,6 +12,7 @@ mount disks and load the ROMs. Standard library only (Debian's python3 is enough
     GET  /ws                     WebSocket: server -> browser  0x01 frame, 0x02 audio, text = JSON state
                                               browser -> server  text JSON {"keys":"<16 hex digits>"} or {"ctrl":{...}}
     GET  /api/state              JSON state
+    GET  /api/debug              registers and bus timing (bring-up)
     PUT  /api/disk/<0-3>?name=X  body = disk image (DMK, JV1, JV3 or HFE: converted to DMK); mounts it
     GET  /api/disk/<0-3>         download the (possibly modified) DMK
     DELETE /api/disk/<0-3>       eject
@@ -57,26 +58,56 @@ SYS_ROM, CHARGEN = 16384, 2048
 
 # ---------------------------------------------------------------- register access
 class MemRegs:
-    """The FIC window of the gateware, through /dev/uioN or /dev/mem."""
+    """The FIC window of the gateware, through /dev/uioN or /dev/mem.
+
+    The window is a 32 bit APB bus without byte strobes, so every access must be a real 32 bit load or store. Python's
+    struct / memcpy use byte stores on this board (the word ends up as one byte repeated), so the accesses are done by
+    regs32.c, compiled with gcc on first use."""
     def __init__(self, path, base=0, size=0x100000):
+        import ctypes
         self.fd = os.open(path, os.O_RDWR | os.O_SYNC)
         self.mm = mmap.mmap(self.fd, size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=base)
+        self.base = ctypes.addressof(ctypes.c_char.from_buffer(self.mm))
+        self.lib = self._load_lib(ctypes)
+        self.ct = ctypes
+
+    @staticmethod
+    def _load_lib(ctypes):
+        import subprocess
+        import tempfile
+        src = os.path.join(HERE, "regs32.c")
+        out = os.path.join(HERE, "regs32.so")
+        if not os.path.exists(out) or os.path.getmtime(out) < os.path.getmtime(src):
+            try:
+                subprocess.check_call(["gcc", "-O2", "-shared", "-fPIC", "-o", out, src])
+            except (OSError, subprocess.CalledProcessError):       # e.g. the install folder is read only
+                out = os.path.join(tempfile.gettempdir(), "cp300_regs32.so")
+                subprocess.check_call(["gcc", "-O2", "-shared", "-fPIC", "-o", out, src])
+        lib = ctypes.CDLL(out)
+        lib.rd32.restype = ctypes.c_uint32
+        lib.rd32.argtypes = [ctypes.c_size_t]
+        lib.wr32.restype = None
+        lib.wr32.argtypes = [ctypes.c_size_t, ctypes.c_uint32]
+        lib.rdblk.restype = None
+        lib.rdblk.argtypes = [ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t]
+        lib.wrblk.restype = None
+        lib.wrblk.argtypes = [ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t]
+        return lib
 
     def read32(self, off):
-        return struct.unpack_from("<I", self.mm, off)[0]
+        return self.lib.rd32(self.base + off)
 
     def write32(self, off, val):
-        struct.pack_into("<I", self.mm, off, val & 0xFFFFFFFF)
+        self.lib.wr32(self.base + off, val & 0xFFFFFFFF)
 
     def read_block(self, off, n):
-        out = bytearray(n)
-        for i in range(0, n, 4):                      # 32 bit accesses only: the bus is a 32 bit AXI4-Lite
-            struct.pack_into("<I", out, i, self.read32(off + i))
-        return bytes(out)
+        buf = bytearray(n)
+        self.lib.rdblk(self.base + off, (self.ct.c_char * n).from_buffer(buf), n // 4)
+        return bytes(buf)
 
     def write_block(self, off, data):
-        for i in range(0, len(data), 4):
-            self.write32(off + i, struct.unpack_from("<I", data, i)[0])
+        buf = bytes(data)
+        self.lib.wrblk(self.base + off, self.ct.c_char_p(buf), len(buf) // 4)
 
 
 class SimRegs:
@@ -260,9 +291,11 @@ class Cp300:
         if not self.roms_ready():
             return False
         self.load_roms()
-        self.publish_slots()
+        # the slot registers are held cleared while run = 0 (bvf_dataslot resets with it): release the IO controller
+        # first, it waits for the "slot table scanned" flag with the CP-300 still held, then publish the table
         self.ctrl["run"] = 1
         self.apply_ctrl()
+        self.publish_slots()
         return True
 
     # -- disks
@@ -350,6 +383,35 @@ class Cp300:
             w = self.r.read32(R_AUDIO_HEAD)
             out.append((w & 0x7FFFFF, w >> 23))
             self.r.write32(R_AUDIO_HEAD, 0)
+        return out
+
+    def debug(self):
+        """Registers and bus timing, for bring-up: GET /api/debug (all accesses are 32 bit)."""
+        r = self.r
+        out = {"ctrl": hex(r.read32(R_CTRL)), "status": hex(r.read32(R_STATUS)), "frame": hex(r.read32(R_FRAME)),
+               "debug_byte": hex(r.read32(R_DEBUG)), "audio_count": r.read32(R_AUDIO)}
+        t = time.perf_counter()
+        for _ in range(1000):
+            r.read32(R_ID)
+        out["read32_us"] = round((time.perf_counter() - t) * 1000, 2)
+        t = time.perf_counter()
+        r.read_block(W_FRAME, FRAME_BYTES)
+        out["read_block_ms"] = round((time.perf_counter() - t) * 1000, 2)
+        # do writes stick? (all zero reads would mean the register block is held in reset)
+        r.write32(R_KEYS_LO, 0xA5A55A5A)
+        out["keys_lo_readback"] = hex(r.read32(R_KEYS_LO))
+        r.write32(R_KEYS_LO, 0)
+        r.write32(R_CTRL, 1)
+        out["ctrl_readback_after_write_1"] = hex(r.read32(R_CTRL))
+        self.apply_ctrl()
+        out["ctrl_after_apply"] = hex(r.read32(R_CTRL))
+        r.write_block(R_KEYS_LO, bytes([0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55]))
+        out["block_write_readback"] = [hex(r.read32(R_KEYS_LO)), hex(r.read32(R_KEYS_HI))]
+        r.write32(R_KEYS_LO, 0)
+        r.write32(R_KEYS_HI, 0)
+        f0 = r.read32(R_FRAME) & 0xFFFF
+        time.sleep(1.0)
+        out["frames_per_second"] = (r.read32(R_FRAME) & 0xFFFF) - f0
         return out
 
     def state(self):
@@ -448,6 +510,8 @@ class Server:
         try:
             if parts == ["state"]:
                 return await self.json(writer, dev.state())
+            if parts == ["debug"]:
+                return await self.json(writer, dev.debug())
             if parts[0] == "disk" and len(parts) == 2 and parts[1] in "0123":
                 n = int(parts[1])
                 if method == "PUT":
