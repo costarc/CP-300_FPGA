@@ -1,0 +1,9 @@
+{
+	"version": 0,
+	"tools": {
+		"cp300": {
+			"label": "CP-300",
+			"path": "index.html"
+		}
+	}
+}

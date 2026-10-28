@@ -76,6 +76,9 @@ h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(-
 </main>
 
 <script>
+// the page may be served under a prefix (the stock web server proxies /cp300/): all URLs are relative to it
+const BASE = location.pathname.replace(/[^\/]*$/, "");
+
 "use strict";
 // ---- CP-300 keyboard matrix: bit = 8 * row + column ----
 const ROWS = ["@ABCDEFG", "HIJKLMNO", "PQRSTUVW", "XYZ", "01234567", "89:;,-./"];
@@ -215,7 +218,7 @@ function audioEvents(buf) {
 
 // ---- connection
 function connect() {
-  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + "ws");
   ws.binaryType = "arraybuffer";
   ws.onopen = () => { $("conn").textContent = "connected"; $("conn").className = "on"; prev = null; keyBits = -1n; sendKeys(); };
   ws.onclose = () => { $("conn").textContent = "disconnected, retrying…"; $("conn").className = ""; setTimeout(connect, 1500); };
@@ -242,9 +245,9 @@ function showState(s) {
     const row = document.createElement("div"); row.className = "row";
     if (d.size) {
       const dl = document.createElement("button"); dl.textContent = "Download";
-      dl.onclick = () => { location.href = "/api/disk/" + n; };
+      dl.onclick = () => { location.href = BASE + "api/disk/" + n; };
       const ej = document.createElement("button"); ej.textContent = "Eject";
-      ej.onclick = () => fetch("/api/disk/" + n, { method: "DELETE" });
+      ej.onclick = () => fetch(BASE + "api/disk/" + n, { method: "DELETE" });
       row.append(dl, ej);
     }
     const pick = document.createElement("input"); pick.type = "file"; pick.style.maxWidth = "170px";
@@ -259,13 +262,13 @@ function showState(s) {
 }
 async function putDisk(n, f) {
   say("Loading " + f.name + "…");
-  const r = await fetch("/api/disk/" + n + "?name=" + encodeURIComponent(f.name), { method: "PUT", body: await f.arrayBuffer() });
+  const r = await fetch(BASE + "api/disk/" + n + "?name=" + encodeURIComponent(f.name), { method: "PUT", body: await f.arrayBuffer() });
   const j = await r.json().catch(() => ({}));
   say(r.ok ? f.name + " mounted in drive " + n + (j.info && j.info.warnings && j.info.warnings.length ? " (" + j.info.warnings.length + " warnings)" : "")
            : "Could not mount: " + (j.error || r.status), !r.ok);
 }
 async function putRom(kind, f) {
-  const r = await fetch("/api/rom/" + kind, { method: "PUT", body: await f.arrayBuffer() });
+  const r = await fetch(BASE + "api/rom/" + kind, { method: "PUT", body: await f.arrayBuffer() });
   const j = await r.json().catch(() => ({}));
   say(r.ok ? kind + " ROM loaded" : (j.error || "ROM rejected"), !r.ok);
 }
