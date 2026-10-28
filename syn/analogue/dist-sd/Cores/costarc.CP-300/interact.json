@@ -1,0 +1,102 @@
+{
+    "interact": {
+        "magic": "APF_VER_1",
+        "variables": [
+            {
+                "name": "Phosphor",
+                "id": 1,
+                "type": "list",
+                "enabled": true,
+                "persist": true,
+                "address": "0x40000000",
+                "defaultval": 0,
+                "options": [
+                    { "value": "0x0", "name": "White" },
+                    { "value": "0x1", "name": "Green" },
+                    { "value": "0x2", "name": "Amber" }
+                ]
+            },
+            {
+                "name": "Turbo CPU",
+                "id": 2,
+                "type": "check",
+                "enabled": true,
+                "persist": true,
+                "address": "0x40000004",
+                "defaultval": 0,
+                "value": 1
+            },
+            {
+                "name": "Sound",
+                "id": 3,
+                "type": "check",
+                "enabled": true,
+                "persist": true,
+                "address": "0x40000008",
+                "defaultval": 1,
+                "value": 1
+            },
+            {
+                "name": "Volume",
+                "id": 4,
+                "type": "list",
+                "enabled": true,
+                "persist": true,
+                "address": "0x4000000C",
+                "defaultval": 2,
+                "options": [
+                    { "value": "0x0", "name": "Low" },
+                    { "value": "0x1", "name": "Medium" },
+                    { "value": "0x2", "name": "High" },
+                    { "value": "0x3", "name": "Max" }
+                ]
+            },
+            {
+                "name": "Buttons are keys",
+                "id": 5,
+                "type": "check",
+                "enabled": true,
+                "persist": true,
+                "address": "0x40000014",
+                "defaultval": 1,
+                "value": 1
+            },
+            {
+                "name": "Write protect disks",
+                "id": 6,
+                "type": "check",
+                "enabled": true,
+                "persist": true,
+                "address": "0x40000010",
+                "defaultval": 0,
+                "value": 1
+            },
+            {
+                "name": "Reset CP-300",
+                "id": 7,
+                "type": "action",
+                "enabled": true,
+                "address": "0x40000018",
+                "value": 1
+            },
+            {
+                "name": "Eject all disks",
+                "id": 9,
+                "type": "check",
+                "enabled": true,
+                "persist": false,
+                "address": "0x4000001C",
+                "defaultval": 0,
+                "value": 1
+            },
+            {
+                "name": "Disk status",
+                "id": 8,
+                "type": "number_u32",
+                "enabled": false,
+                "address": "0x40000024"
+            }
+        ],
+        "messages": []
+    }
+}

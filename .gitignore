@@ -39,7 +39,6 @@ syn/analogue/sim/out/
 firmware/pocket/out/
 syn/analogue/output/
 syn/analogue/src/fpga/output_files/
-syn/analogue/dist-sd/
 
 # MiSTer
 syn/mister/dist-sd/

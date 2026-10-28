@@ -1,0 +1,10 @@
+CP-300 for the Analogue Pocket
+
+Prologica CP-300, the Brazilian TRS-80 Model III compatible computer (1983): Z80, 64 x 16 text screen,
+WD1793 floppy controller with DMK disk images, on-screen keyboard, sound.
+
+Load a disk image into "Drive 0" from the asset menu (.dsk or .dmk, DMK format) and the CP-300 boots
+it. Select opens the on-screen keyboard. Core settings: phosphor colour, turbo CPU, sound and volume,
+write protect, reset.
+
+The CP-300 ROMs are not part of the core's source repository; see the project README.

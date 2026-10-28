@@ -1,0 +1,20 @@
+{
+    "input": {
+        "magic": "APF_VER_1",
+        "controllers": [
+            {
+                "type": "default",
+                "mappings": [
+                    { "id": 0, "name": "A (key / SPACE)", "key": "pad_btn_a" },
+                    { "id": 1, "name": "B (SHIFT / ENTER)", "key": "pad_btn_b" },
+                    { "id": 2, "name": "X (SPACE / BREAK)", "key": "pad_btn_x" },
+                    { "id": 3, "name": "Y (ENTER / CLEAR)", "key": "pad_btn_y" },
+                    { "id": 4, "name": "L (BREAK / SHIFT)", "key": "pad_trig_l" },
+                    { "id": 5, "name": "R (CLEAR)", "key": "pad_trig_r" },
+                    { "id": 6, "name": "Start (keyboard top)", "key": "pad_btn_start" },
+                    { "id": 7, "name": "Select (keyboard)", "key": "pad_btn_select" }
+                ]
+            }
+        ]
+    }
+}
