@@ -17,8 +17,8 @@ sdasz80 -plosgff crt0.rel ../../crt0.s
 for f in main slotfile; do
   sdcc -mz80 --sdcccall 1 --std-sdcc99 -DPOCKET -I.. -I../.. -c ../$f.c -o $f.rel
 done
-# the block cache is the 16 KB track RAM: a track is loaded with one request (see dmk.h)
-sdcc -mz80 --sdcccall 1 --std-sdcc99 -DPOCKET -DDMK_WIN=32 -DDMK_SPAN=1 -DDMK_GUESS=0 -DDMK_CBUF_ADDR=0x8000 -I.. -I../.. -c ../../dmk.c -o dmk.rel
+# the block cache is the track RAM (16 KB less the last 512 bytes, which the hard disk uses): a track is loaded with one request (see dmk.h)
+sdcc -mz80 --sdcccall 1 --std-sdcc99 -DPOCKET -DDMK_WIN=31 -DDMK_SPAN=1 -DDMK_GUESS=0 -DDMK_CBUF_ADDR=0x8000 -I.. -I../.. -c ../../dmk.c -o dmk.rel
 sdcc -mz80 --sdcccall 1 --no-std-crt0 --code-loc 0x0100 --data-loc 0x4000 \
   crt0.rel main.rel slotfile.rel dmk.rel -o io_fw.ihx
 python ../../../tools/mkfw.py io_fw.ihx ../../../syn/analogue/src/fpga/core/io_fw_pkg.vhd

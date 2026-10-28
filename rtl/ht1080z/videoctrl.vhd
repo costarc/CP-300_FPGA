@@ -102,6 +102,10 @@ architecture Behavioral of videoctrl is
 
 type videomem is array(0 to 1023) of std_logic_vector(7 downto 0);
 
+signal clrcnt : unsigned(9 downto 0) := (others => '0');
+signal vwe : std_logic;
+signal vwaddr : std_logic_vector(9 downto 0);
+signal vwdata : std_logic_vector(7 downto 0);
 signal vidmem : videomem:=(
 others => x"00"
 );
@@ -221,13 +225,21 @@ begin
 end process;
 
 
+vwe    <= '1' when RESET='0' or (cs='0' and wr='0') else '0';
+vwaddr <= std_logic_vector(clrcnt) when RESET='0' else a(9 downto 0);
+vwdata <= x"20" when RESET='0' else din;
+
 process(clk42)
 begin
   if rising_edge(clk42) then
     chrCode <= vidmem(conv_integer( vaVert & vaHoriz ));
 	 dout <= vidmem(conv_integer( a(9 downto 0) ));
-	 if cs='0' and wr='0' then
-	   vidmem(conv_integer( a(9 downto 0) )) <= din;
+	 if vwe='1' then
+	   vidmem(conv_integer( vwaddr )) <= vwdata;
+	 end if;
+	 -- a reset clears the screen like the real machine does: spaces, one cell per clock
+	 if RESET='0' then
+	   clrcnt <= clrcnt + 1;
 	 end if;
 	end if;
 end process;

@@ -15,7 +15,7 @@ One core, several boards. Each port folder has its own README with the wiring, t
 | **Terasic DE0** (Cyclone III) | [`syn/de0`](syn/de0/README.md) | VGA, PS/2 and the original CP-300 keyboard, SD card, on-screen menu | **Works** (tested on a board) |
 | **Analogue Pocket** (Cyclone V) | [`syn/analogue`](syn/analogue/README.md) | the Pocket's screen, on-screen keyboard, audio, disks from the Core Settings menu | **Works** on a Pocket. The newest SD-card speed changes are not yet re-tested on hardware |
 | **BeagleV-Fire** (PolarFire SoC, RISC-V Linux) | [`syn/beaglev-fire`](syn/beaglev-fire/README.md) | **in a web browser**: screen, keyboard, sound, four disk drives | **Works** on the author's board. Installable [package](syn/beaglev-fire/releases) with an installer |
-| **MiSTer** (DE10-Nano) | [`syn/mister`](syn/mister/README.md) | the MiSTer framework (HDMI/VGA), USB keyboard, SD card, OSD | Compiles. Never run on a MiSTer |
+| **MiSTer** (DE10-Nano) | [`syn/mister`](syn/mister/README.md) | the MiSTer framework (HDMI/VGA), USB keyboard, SD card, OSD | Compiles. Tested on a MiSTer |
 | **Sipeed Tang Nano 9K** and **20K** (Gowin) | [`syn/tangnano9k`](syn/tangnano9k/README.md), [`syn/tangnano20k`](syn/tangnano20k/README.md) | HDMI (640x480), SD card, on-screen menu; the 20K build is limited to what a 9K has | Synthesises and meets timing in the Gowin tools, the frame buffer path passes its simulation. Not tried on a board |
 
 "Works" means the ROM boots and a DOS boots from a disk image on the real board, checked by the author. The other ports are
@@ -40,7 +40,7 @@ The figures are those of the DE0 build; the other ports differ in video, input a
 | CPU | Z80 at 2.0 MHz (T80), Model III memory map and I/O |
 | ROM | the four CP-300 2732 EPROMs and the 900-65 character generator (you supply the dumps, see [roms/README.md](roms/README.md)) |
 | Video | 64 x 16 text, 32-column mode, graphic blocks, kana set; 31 kHz VGA through the MiST scandoubler |
-| Disks | WD1793 floppy controller, 4 drives, **DMK** images on the SD card, read and write |
+| Disks | WD1793 floppy controller, 4 drives, **DMK** images on the SD card, read and write; **FreeHD** hard disk interface (ports C0-CF), 2 drives, **HDV** images |
 | Interface | on-screen menu (F12), SD card (FAT16/FAT32, SPI), PS/2 keyboard and the original CP-300 keyboard matrix, RS-232 |
 
 There was no existing Model III or CP-300 core, so this starts from the HT1080Z core ([mist-devel/ht1080z](https://github.com/mist-devel/ht1080z), a TRS-80 Model I for MiST) and converts it step by step. [docs/design-notes.md](docs/design-notes.md) has the reasoning and the Model III changes.
@@ -79,6 +79,37 @@ python tools/dsk2dmk.py DiskImages/ /path/to/sd/CP300              a whole folde
 
 To run a BASIC program from a disk with TRSDOS 1.3: at `TRSDOS Ready` type `BASIC`, press Enter at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` after the name for a file in Drive 1).
 
+### Hard disks (FreeHD)
+
+Version 0.3.0 adds the hard disk interface the TRS-80 community knows as **FreeHD / FreHD** (a Radio Shack style WD1010 controller at ports `C0`-`CF`, the same one the xtrs emulator and Matthew Reed's emulators provide). Two hard disks, each an **`.HDV`** image: a 256-byte header (`56 CB 10 ...`, the format of xtrs and TRS32) followed by 256-byte sectors, 32 per track. Images made for xtrs, TRS32 or a real FreHD card's SD work as they are; cylinders, heads and the write-protect flag come from the header.
+
+| Port | |
+|---|---|
+| `C0` | read: write protect, bits 7-4 for drives 0-3 |
+| `C1` | control: bit 4 reset, bit 3 enable |
+| `C8`-`CF` | WD1010: data, error, sector count, sector number, cylinder low / high, size-drive-head, status / command |
+
+Supported commands: RESTORE, SEEK, VERIFY, READ SECTOR and WRITE SECTOR (one 256-byte sector; no multi-sector, DMA or FORMAT TRACK - FORMAT and INIT just report done, as in xtrs). `python tools/mkhdv.py my.hdv` makes an empty image (default 153 cylinders x 4 heads = 5 MB, the Radio Shack drive; up to 256 x 8 = 16 MB); format it from the operating system (LDOS / LS-DOS `FORMAT`), which only writes the directory. The ports answer only while a hard disk image is mounted; with none, reads return `FF` as an empty bus does, so a machine without a hard disk behaves exactly as before.
+
+The CP-300 ROMs cannot boot from a hard disk: boot a floppy that carries the hard disk driver (LDOS 5.3 / LS-DOS 6, TRSDOS 6 or NEWDOS/80 configured for the FreeHD ports) and use the hard disk from there, as with a real FreHD.
+
+| Port | Where the images come from |
+|---|---|
+| DE0, Tang Nano | `/CP300/NAME.HDV` on the SD card; OSD menu items **HD0** and **HD1** |
+| Analogue Pocket | Core Settings -> **Hard disk 0 / 1 (FreeHD)**, a file from `Assets/cp300/common` |
+| MiSTer | OSD **Hard disk 0 / 1**, `.HDV` files in `games/CP-300` |
+| BeagleV-Fire | upload in the browser page (daemon API `PUT /api/hd/0` and `/api/hd/1`) |
+
+How it works: `rtl/hdc/wd1010.vhd` is the controller (registers, a 256-byte buffer); like the floppy controller it does not know the image format and asks the IO controller for the sector by (drive, cylinder, head, sector). The request travels over the floppy controller's service path (flag bit 7 of port `10` says whom it is for), so every port needed only two new signals.
+
+### Reset clears the screen
+
+A reset (power-on, the menu's **Reset CP-300**) now clears the video RAM to spaces, as the real machine does; before, the old text stayed under the boot output. `rtl/ht1080z/videoctrl.vhd` fills the 1 KB while the core is held in reset (which now lasts 2047 clocks, 49 us); `sim/tb_vclr.vhd` checks it.
+
+### Version
+
+The core version is in [VERSION](VERSION) (also `syn/analogue/core.json`). 0.3.0: FreeHD hard disk interface, reset clears the screen, data slot change reports made reliable on the Pocket. 0.2.0: BeagleV-Fire package. 0.1.0: first Pocket release.
+
 ## Simulation and tests
 
 All simulations use GHDL and write their results to `sim/out/` (not committed). GHDL is about 1000 times slower than the real machine: a simulated second takes 15 to 20 minutes.
@@ -88,7 +119,9 @@ All simulations use GHDL and write their results to `sim/out/` (not committed). 
 | `sh sim/run.sh 1500ms` | the core alone: the ROM boots to `Cass?` (the screen of the last frame is printed) |
 | `sh sim/run_io.sh` | the IO controller with its real firmware, an SD card model and PS/2 keys; writes the menu as `sim/out/osd_<n>.pbm` pictures |
 | `sh sim/run_sys.sh 600ms` | the whole machine boots a DMK disk from the SD card model; the boot sector prints `BOOT OK`, then `FDC OK` after a seek, read, write and read-back test |
+| `python tools/mkfat.py sim/out/card.img --clusters 4200 --spc 1 --boot HDBOOT`, then `sh sim/run_sys.sh` | the same with a boot sector that tests the FreeHD ports on a `.HDV` image (even and odd sectors, read, write, read back); prints `HD OK` |
 | `sh sim/run_kbd.sh` | the original keyboard matrix scanner against a model of the switch matrix: scanning, two and three keys at once, debounce, and what the CPU reads at 3800h with the PS/2 keyboard merged |
+| `sh sim/run_hdc.sh` | the FreeHD controller alone with a behavioural IO controller: READ and WRITE SECTOR with multi-clock Z80 I/O cycles, status and error codes, write protect, missing drive (seconds) |
 | `./build.sh test` | PC tests: the DMK converter and the FAT code |
 | `python tools/test_dmk.py a.dmk b.dmk` | checks the firmware's DMK reader against the converter's own decoder on real images (needs gcc) |
 
@@ -103,6 +136,7 @@ rtl/tang/        shared board layer of the Tang Nano 9K and 20K (frame buffer in
 rtl/cp300/       the system ROM (four 2732 EPROM images)
 rtl/ht1080z/     the core: Z80 system, video, keyboard (vendored from mist-devel/ht1080z, modified)
 rtl/fdc/         WD1793 floppy controller (VHDL)
+rtl/hdc/         WD1010 / FreeHD hard disk controller (VHDL)
 rtl/kbd/         scanner for the original CP-300 keyboard matrix
 rtl/io/          IO controller of the SD card ports: a second Z80 with SD card, OSD menu, PS/2 and the floppy sector service
 rtl/T80/         submodule: mist-devel/T80 (Z80 core)
@@ -118,7 +152,7 @@ syn/beaglev-fire/ BeagleV-Fire: gateware around the core (rtl), the CP-300 cape 
                  the daemon and web page (host), the installer and the package builder (package), the releases
 sim/             GHDL testbenches and scripts (sim/tang: the Tang frame buffer path)
 roms/            ROM dumps go here (not committed)
-tools/           mkroms, mkfw, mkfat, dsk2dmk, mkpocketrom, mkmisterrom and their tests
+tools/           mkroms, mkfw, mkfat, mkhdv, dsk2dmk, mkpocketrom, mkmisterrom and their tests
 docs/            design notes
 ```
 

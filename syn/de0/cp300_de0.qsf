@@ -20,6 +20,7 @@ set_global_assignment -name VHDL_FILE ../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/de0/pll_de0.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/kbd/matrix_kbd.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/fdc/wd1793.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/hdc/wd1010.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/io/io_fw_pkg.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/io/io_ctrl.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ht1080z.vhd

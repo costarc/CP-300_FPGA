@@ -219,6 +219,32 @@ def main():
     dev.debug()
     assert regs.keys == 0x0000002000000040, hex(regs.keys)
     print("ok   /api/debug restores the keys")
+    # FreeHD hard disk: an HDV image in slot 6 (hard disk 0), served and written like a floppy image
+    hdv = bytearray(256 + 64 * 256)
+    hdv[0:3] = b"\x56\xcb\x10"
+    hdv[28], hdv[29] = 1, 64
+    for i in range(64 * 256):
+        hdv[256 + i] = (i * 3) & 255
+    try:
+        dev.mount_hd(0, b"\x00" * 600, "BAD.HDV")
+        raise AssertionError("a file without the HDV header was accepted")
+    except ValueError:
+        pass
+    info = dev.mount_hd(0, hdv, "T.HDV")
+    assert info == {"cylinders": 1, "sectors_per_cylinder": 64}
+    assert regs.slots[6] == len(hdv) and regs.present & (1 << 6)
+    regs.req = (6, 512, 512, 0, 0)
+    assert dev.service()
+    assert bytes(regs.trk[:512]) == bytes(hdv[512:1024]), "HDV read request"
+    regs.req = (6, 1024, 512, 0, 1)
+    regs.trk[0:512] = bytes(range(256)) * 2
+    assert dev.service()
+    assert bytes(dev.disks[6][1024:1536]) == bytes(range(256)) * 2 and dev.dirty[6]
+    dev.save_dirty()
+    assert dev.state()["hd"][0]["size"] == len(hdv)
+    dev.eject(6)
+    assert regs.slots[6] == 0 and not regs.present & (1 << 6)
+    print("ok   FreeHD image mounted, read, written, ejected")
     print("PASS")
 
 

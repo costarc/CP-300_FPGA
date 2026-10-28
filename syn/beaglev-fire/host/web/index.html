@@ -60,7 +60,7 @@ h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(-
 </div>
 
 <div class="panel">
-  <h2>Disk drives — drop a .dsk / .dmk / .hfe / .jv1 / .jv3 file on a drive</h2>
+  <h2>Disk drives — drop a .dsk / .dmk / .hfe / .jv1 / .jv3 file on a drive, an .hdv file on a hard disk</h2>
   <div class="drives" id="drives"></div>
 </div>
 
@@ -247,34 +247,36 @@ function showState(s) {
   $("bWp").classList.toggle("on", !!s.wp);
   $("romState").textContent = (s.roms.system && s.roms.chargen) ? "both ROMs loaded" : "load both ROMs to start";
   const host = $("drives"); host.textContent = "";
-  s.drives.forEach((d, n) => {
+  // floppy drives (api/disk/<n>) and the FreeHD hard disks (api/hd/<n>)
+  const cards = s.drives.map((d, n) => ["disk", n, "Drive " + n, d]).concat((s.hd || []).map((d, n) => ["hd", n, "Hard disk " + n + " (FreeHD)", d]));
+  cards.forEach(([kind, n, label, d]) => {
     const el = document.createElement("div"); el.className = "drive";
     const nm = document.createElement("div"); nm.className = "nm";
     nm.textContent = d.size ? d.name + " (" + Math.round(d.size / 1024) + " KB)" : "empty";
-    const b = document.createElement("b"); b.textContent = "Drive " + n;
+    const b = document.createElement("b"); b.textContent = label;
     const row = document.createElement("div"); row.className = "row";
     if (d.size) {
       const dl = document.createElement("button"); dl.textContent = "Download";
-      dl.onclick = () => { location.href = BASE + "api/disk/" + n; };
+      dl.onclick = () => { location.href = BASE + "api/" + kind + "/" + n; };
       const ej = document.createElement("button"); ej.textContent = "Eject";
-      ej.onclick = () => fetch(BASE + "api/disk/" + n, { method: "DELETE" });
+      ej.onclick = () => fetch(BASE + "api/" + kind + "/" + n, { method: "DELETE" });
       row.append(dl, ej);
     }
     const pick = document.createElement("input"); pick.type = "file"; pick.style.maxWidth = "170px";
-    pick.onchange = () => pick.files[0] && putDisk(n, pick.files[0]);
+    pick.onchange = () => pick.files[0] && putDisk(kind, n, label, pick.files[0]);
     row.append(pick);
     el.append(b, nm, row);
     el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("over"); });
     el.addEventListener("dragleave", () => el.classList.remove("over"));
-    el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("over"); if (e.dataTransfer.files[0]) putDisk(n, e.dataTransfer.files[0]); });
+    el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("over"); if (e.dataTransfer.files[0]) putDisk(kind, n, label, e.dataTransfer.files[0]); });
     host.appendChild(el);
   });
 }
-async function putDisk(n, f) {
+async function putDisk(kind, n, label, f) {
   say("Loading " + f.name + "…");
-  const r = await fetch(BASE + "api/disk/" + n + "?name=" + encodeURIComponent(f.name), { method: "PUT", body: await f.arrayBuffer() });
+  const r = await fetch(BASE + "api/" + kind + "/" + n + "?name=" + encodeURIComponent(f.name), { method: "PUT", body: await f.arrayBuffer() });
   const j = await r.json().catch(() => ({}));
-  say(r.ok ? f.name + " mounted in drive " + n + (j.info && j.info.warnings && j.info.warnings.length ? " (" + j.info.warnings.length + " warnings)" : "")
+  say(r.ok ? f.name + " mounted in " + label.toLowerCase() + (j.info && j.info.warnings && j.info.warnings.length ? " (" + j.info.warnings.length + " warnings)" : "")
            : "Could not mount: " + (j.error || r.status), !r.ok);
 }
 async function putRom(kind, f) {

@@ -69,11 +69,13 @@ entity io_ctrl_pocket is
     fdc_buff_din  : in  std_logic_vector(7 downto 0);
     drv_ready   : out std_logic_vector(3 downto 0);
     drv_wp      : out std_logic_vector(3 downto 0);
+    hd_svc      : in  std_logic;                     -- the pending sector request is the hard disk's
+    hd_flags    : out std_logic_vector(3 downto 0);  -- hard disk images mounted / write protected
 
     -- data slot access (apf_dataslot)
     slot_req_tog : out std_logic;
     slot_req_wr  : out std_logic;
-    slot_num     : out std_logic_vector(1 downto 0);
+    slot_num     : out std_logic_vector(2 downto 0);
     slot_offset  : out std_logic_vector(31 downto 0);
     slot_len     : out std_logic_vector(15 downto 0);
     slot_boff    : out std_logic_vector(13 downto 0);
@@ -84,9 +86,9 @@ entity io_ctrl_pocket is
     trk_we       : out std_logic;
     trk_din      : out std_logic_vector(7 downto 0);
     trk_dout     : in  std_logic_vector(7 downto 0);
-    slot_present : in  std_logic_vector(3 downto 0);
-    slot_changed : in  std_logic_vector(3 downto 0);
-    slot_chg_clr : out std_logic_vector(3 downto 0);
+    slot_present : in  std_logic_vector(7 downto 0);
+    slot_changed : in  std_logic_vector(7 downto 0);
+    slot_chg_clr : out std_logic_vector(7 downto 0);
     scan_valid   : in  std_logic;
     opt_wp       : in  std_logic;
     opt_eject    : in  std_logic := '0'
@@ -108,6 +110,7 @@ architecture rtl of io_ctrl_pocket is
   signal rom_sel, ram_sel : std_logic;
   signal iord, iowr, iord_q, iowr_q, rdp, wrp : std_logic;
   signal ack_r, bw_r : std_logic := '0';
+  signal hd_rdy, hd_prot : std_logic_vector(1 downto 0) := (others => '0');
   signal baddr : unsigned(8 downto 0) := (others => '0');
   signal bdout : std_logic_vector(7 downto 0) := (others => '0');
   signal dr_ready, dr_wp : std_logic_vector(3 downto 0) := (others => '0');
@@ -120,7 +123,7 @@ architecture rtl of io_ctrl_pocket is
 
   -- data slot access
   signal off_r   : std_logic_vector(31 downto 0) := (others => '0');
-  signal slot_r  : std_logic_vector(1 downto 0) := (others => '0');
+  signal slot_r  : std_logic_vector(2 downto 0) := (others => '0');
   signal tog_r, wr_r : std_logic := '0';
   signal len_r   : std_logic_vector(15 downto 0) := (others => '0');
   signal boff_r  : std_logic_vector(13 downto 0) := (others => '0');
@@ -130,7 +133,7 @@ architecture rtl of io_ctrl_pocket is
   signal trk_wa  : std_logic_vector(13 downto 0) := (others => '0');
   signal trk_wd  : std_logic_vector(7 downto 0) := (others => '0');
   signal size_r  : std_logic_vector(31 downto 0) := (others => '0');
-  signal chg_clr_r : std_logic_vector(3 downto 0) := (others => '0');
+  signal chg_clr_r : std_logic_vector(7 downto 0) := (others => '0');
   signal busy_i  : std_logic;
 
 begin
@@ -211,6 +214,7 @@ begin
       if reset = '1' then
         ack_r <= '0'; baddr <= (others => '0');
         dr_ready <= (others => '0'); dr_wp <= (others => '0'); res_r <= (others => '0');
+        hd_rdy <= (others => '0'); hd_prot <= (others => '0');
       else
         if bw_r = '1' then baddr <= baddr + 1; end if;
         if cen = '1' and rdp = '1' and rd_port = x"14" then baddr <= baddr + 1; end if;
@@ -223,7 +227,11 @@ begin
               bdout <= cpu_do; bw_r <= '1';
             when x"15" =>
               d := to_integer(unsigned(cpu_do(1 downto 0)));
-              dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3);
+              if cpu_do(4) = '1' then                   -- hard disk d (0 or 1)
+                hd_rdy(d mod 2) <= cpu_do(2); hd_prot(d mod 2) <= cpu_do(3);
+              else
+                dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3);
+              end if;
             when x"16" =>
               res_r <= cpu_do(2 downto 0);
             when others => null;
@@ -237,6 +245,7 @@ begin
   fdc_buff_dout <= bdout;
   fdc_buff_wr <= bw_r;
   drv_ready <= dr_ready; drv_wp <= dr_wp;
+  hd_flags <= hd_prot & hd_rdy;
   fdc_res_found <= res_r(0); fdc_res_crc <= res_r(1); fdc_res_dam <= res_r(2);
 
   -- data slot commands and buffers
@@ -257,13 +266,13 @@ begin
             when x"21" => off_r(15 downto 8)  <= cpu_do;
             when x"22" => off_r(23 downto 16) <= cpu_do;
             when x"23" => off_r(31 downto 24) <= cpu_do;
-            when x"24" => slot_r <= cpu_do(1 downto 0);
+            when x"24" => slot_r <= cpu_do(2 downto 0);
             when x"25" =>
               if cpu_do(1 downto 0) /= "00" then
                 wr_r <= cpu_do(1);
                 tog_r <= not tog_r;
               end if;
-            when x"2A" => chg_clr_r <= cpu_do(3 downto 0);
+            when x"2A" => chg_clr_r <= cpu_do;
             when x"2C" => len_r(7 downto 0)  <= cpu_do;
             when x"2D" => len_r(15 downto 8) <= cpu_do;
             when x"2E" => boff_r(7 downto 0) <= cpu_do;
@@ -320,7 +329,7 @@ begin
         trk_dout when mreq_n = '0' and trk_sel = '1' else
         x"FF"  when mreq_n = '0' else
         x"A6"   when port_a = x"07" else
-        '0' & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
+        hd_svc & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
         fdc_track when port_a = x"11" else
         fdc_trkreg when port_a = x"12" else
         fdc_sector when port_a = x"17" else
@@ -330,8 +339,8 @@ begin
         size_r(15 downto 8)  when port_a = x"31" else
         size_r(23 downto 16) when port_a = x"32" else
         size_r(31 downto 24) when port_a = x"33" else
-        "0000" & slot_present when port_a = x"29" else
-        "0000" & slot_changed when port_a = x"2A" else
+        slot_present when port_a = x"29" else
+        slot_changed when port_a = x"2A" else
         scan_valid & "0000" & opt_eject & "0" & opt_wp when port_a = x"2B" else
         x"00";
 

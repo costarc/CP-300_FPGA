@@ -16,7 +16,7 @@ mkdir -p out
 cd out
 sdasz80 -plosgff crt0.rel ../crt0.s
 for f in main sd fat dmk; do
-  sdcc -mz80 --sdcccall 1 --std-sdcc99 -c ../$f.c -o $f.rel
+  sdcc -mz80 --sdcccall 1 --std-sdcc99 --max-allocs-per-node 30000 -c ../$f.c -o $f.rel
 done
 sdcc -mz80 --sdcccall 1 --no-std-crt0 --code-loc 0x0100 --data-loc 0x4000 \
   crt0.rel main.rel sd.rel fat.rel dmk.rel -o io_fw.ihx

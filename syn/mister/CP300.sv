@@ -61,6 +61,8 @@ localparam CONF_STR = {
 	"S1,DMKDSK,Drive 1;",
 	"S2,DMKDSK,Drive 2;",
 	"S3,DMKDSK,Drive 3;",
+	"S4,HDV,Hard disk 0;",
+	"S5,HDV,Hard disk 1;",
 	"O[1],Write protect disks,Off,On;",
 	"-;",
 	"O[6:5],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -79,14 +81,14 @@ wire [127:0] status;
 
 wire        ps2_kbd_clk, ps2_kbd_data;
 
-wire  [3:0] img_mounted;
+wire  [5:0] img_mounted;
 wire [63:0] img_size;
-wire [31:0] sd_lba     [4];
-wire  [5:0] sd_blk_cnt [4];
-wire  [3:0] sd_rd, sd_wr, sd_ack;
+wire [31:0] sd_lba     [6];
+wire  [5:0] sd_blk_cnt [6];
+wire  [5:0] sd_rd, sd_wr, sd_ack;
 wire [13:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din [4];
+wire  [7:0] sd_buff_din [6];
 wire        sd_buff_wr;
 
 wire        ioctl_download;
@@ -95,7 +97,7 @@ wire [15:0] ioctl_index;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(4), .BLKSZ(2), .PS2DIV(1750)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(6), .BLKSZ(2), .PS2DIV(1750)) hps_io
 (
 	.clk_sys(clk42),
 	.HPS_BUS(HPS_BUS),
@@ -222,6 +224,8 @@ wire  [8:0] fdc_buff_addr;
 wire  [7:0] fdc_buff_dout, fdc_buff_din;
 wire  [1:0] fdc_drive;
 wire  [3:0] drv_ready, drv_wp;
+wire  [3:0] hd_flags;   // hard disk images mounted / write protected
+wire        hd_svc;     // the pending sector request is the hard disk's
 
 // SDRAM and exp port of the HT1080Z core: unused here
 wire        sd_nCS, sd_nWE, sd_nCAS, sd_nRAS, sd_dqmh, sd_dqml, sd_cke;
@@ -262,6 +266,8 @@ ht1080z_ext cp300 (
 	.fdc_side(fdc_side),
 	.drv_ready(drv_ready),
 	.drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 
 	.ps2clk(ps2_kbd_clk),
 	.ps2dat(ps2_kbd_data),
@@ -322,13 +328,13 @@ ht1080z_ext cp300 (
 // The helper Z80 serves the floppy controller's sector requests out of the DMK images of the four
 // virtual drives, see mister_slots.sv and firmware/pocket.
 wire        slot_req_tog, slot_req_wr, slot_busy, slot_err, trk_we, scan_valid;
-wire  [1:0] slot_num;
+wire  [2:0] slot_num;
 wire [31:0] slot_offset;
 wire [15:0] slot_len;
 wire [13:0] slot_boff, trk_addr;
 wire  [7:0] trk_din, trk_dout;
 wire [31:0] slot_size;
-wire  [3:0] slot_present, slot_changed, slot_chg_clr;
+wire  [7:0] slot_present, slot_changed, slot_chg_clr;
 
 io_ctrl_pocket io_ctrl (
 	.clk(clk42),
@@ -355,6 +361,8 @@ io_ctrl_pocket io_ctrl (
 	.fdc_buff_din(fdc_buff_din),
 	.drv_ready(drv_ready),
 	.drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 
 	.slot_req_tog(slot_req_tog),
 	.slot_req_wr(slot_req_wr),

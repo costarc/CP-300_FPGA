@@ -214,6 +214,8 @@ wire  [8:0] fdc_buff_addr;
 wire  [7:0] fdc_buff_dout, fdc_buff_din;
 wire  [1:0] fdc_drive;
 wire  [3:0] drv_ready, drv_wp;
+wire  [3:0] hd_flags;   // hard disk images mounted / write protected
+wire        hd_svc;     // the pending sector request is the hard disk's
 
 always @(posedge clk42) cass_s <= {cass_s[0], cass_in};
 
@@ -262,6 +264,8 @@ ht1080z #(.EXT_RAM(1'b1), .RUNTIME_ROM(1'b1)) ht1080z (
 	.fdc_side(fdc_side),
 	.drv_ready(drv_ready),
 	.drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 
 	.ps2clk(ps2_clk | menu_open),   // the menu owns the keyboard while it is open
 	.ps2dat(ps2_dat | menu_open),
@@ -375,7 +379,9 @@ io_ctrl #(.CPU_HALF(1'b1)) io_ctrl (
 	.fdc_buff_wr(fdc_buff_wr),
 	.fdc_buff_din(fdc_buff_din),
 	.drv_ready(drv_ready),
-	.drv_wp(drv_wp)
+	.drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc)
 );
 
 assign sd_clk  = spi_sck;

@@ -26,7 +26,7 @@ for f in \
   rtl/T80/T80_Pack.vhd rtl/T80/T80_ALU.vhd rtl/T80/T80_MCode.vhd rtl/T80/T80_Reg.vhd \
   rtl/T80/T80.vhd rtl/T80/T80s.vhd \
   roms/cp300_roms_pkg.vhd rtl/cp300/cp300_rom.vhd \
-  rtl/ht1080z/videoctrl.vhd rtl/ht1080z/ps2reader.vhd rtl/ht1080z/ps2kbd.vhd rtl/fdc/wd1793.vhd \
+  rtl/ht1080z/videoctrl.vhd rtl/ht1080z/ps2reader.vhd rtl/ht1080z/ps2kbd.vhd rtl/fdc/wd1793.vhd rtl/hdc/wd1010.vhd \
   sim/sdram_sim.vhd rtl/ht1080z/ht1080z.vhd sim/tb_cp300.vhd
 do
   $GHDL -a $OPTS "$ROOT/$f"

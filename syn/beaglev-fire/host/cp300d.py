@@ -16,6 +16,9 @@ mount disks and load the ROMs. Standard library only (Debian's python3 is enough
     PUT  /api/disk/<0-3>?name=X  body = disk image (DMK, JV1, JV3 or HFE: converted to DMK); mounts it
     GET  /api/disk/<0-3>         download the (possibly modified) DMK
     DELETE /api/disk/<0-3>       eject
+    PUT  /api/hd/<0-1>?name=X    body = FreeHD hard disk image (HDV: xtrs / TRS32 / FreHD format); mounts it
+    GET  /api/hd/<0-1>           download the (possibly modified) HDV
+    DELETE /api/hd/<0-1>         eject
     PUT  /api/rom/system         body = 16384 bytes;   PUT /api/rom/chargen   body = 2048 bytes
     POST /api/ctrl               JSON {"run":1,"reset":1,"turbo":0,"wp":0}
 
@@ -47,6 +50,12 @@ except ImportError:
 R_ID, R_CTRL, R_STATUS, R_KEYS_LO, R_KEYS_HI, R_FRAME, R_AUDIO, R_AUDIO_HEAD, R_DEBUG = 0x00, 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C, 0x20
 R_REQ_SLOT, R_REQ_OFFSET, R_REQ_LEN, R_REQ_BOFF, R_DONE = 0x40, 0x44, 0x48, 0x4C, 0x50
 R_SIZE, R_PRESENT, R_CHG_SET, R_SCAN_VALID = 0x60, 0x70, 0x74, 0x78
+R_SIZE_HD = 0x80                              # size registers of the slots 6 and 7 (the hard disks)
+HD_SLOT = 6                                   # slot of hard disk 0; the floppy drives are the slots 0-3
+
+
+def size_reg(slot):
+    return R_SIZE + 4 * slot if slot < 4 else R_SIZE_HD + 4 * (slot - HD_SLOT)
 W_ROM, W_TRK, W_FRAME = 0x10000, 0x20000, 0x30000
 ID_VALUE = 0x43503001
 
@@ -137,7 +146,7 @@ class SimRegs:
         self.t0 = time.monotonic()
         self.ctrl = 0
         self.keys = 0
-        self.slots = [0] * 4
+        self.slots = [0] * 8
         self.present = 0
         self.scan = 0
         self.trk = bytearray(16384)
@@ -202,6 +211,8 @@ class SimRegs:
             self.req = None
         elif R_SIZE <= off < R_SIZE + 16:
             self.slots[(off - R_SIZE) // 4] = val
+        elif R_SIZE_HD <= off < R_SIZE_HD + 8:
+            self.slots[HD_SLOT + (off - R_SIZE_HD) // 4] = val
         elif off == R_PRESENT:
             self.present = val
         elif off == R_SCAN_VALID:
@@ -240,9 +251,9 @@ class Cp300:
         self.r = regs
         self.datadir = datadir
         os.makedirs(datadir, exist_ok=True)
-        self.disks = [None] * 4                       # bytearray of a DMK
-        self.names = [""] * 4
-        self.dirty = [False] * 4
+        self.disks = [None] * 8                       # bytearray of a DMK (slots 0-3) or an HDV (slots 6, 7)
+        self.names = [""] * 8
+        self.dirty = [False] * 8
         self.sysrom = None
         self.chargen = None
         self.ctrl = {"run": 0, "turbo": 0, "wp": 0}
@@ -268,19 +279,22 @@ class Cp300:
         meta = {}
         if os.path.exists(self._path("drives.json")):
             meta = json.load(open(self._path("drives.json")))
-        for n in range(4):
-            p = self._path("drive%d.dmk" % n)
+        for n in (0, 1, 2, 3, 6, 7):
+            p = self._disk_path(n)
             if os.path.exists(p):
                 self.disks[n] = bytearray(open(p, "rb").read())
-                self.names[n] = meta.get(str(n), "drive%d.dmk" % n)
+                self.names[n] = meta.get(str(n), os.path.basename(p))
+
+    def _disk_path(self, n):
+        return self._path("drive%d.dmk" % n if n < 4 else "hd%d.hdv" % (n - HD_SLOT))
 
     def _save_meta(self):
-        json.dump({str(n): self.names[n] for n in range(4)}, open(self._path("drives.json"), "w"))
+        json.dump({str(n): self.names[n] for n in (0, 1, 2, 3, 6, 7)}, open(self._path("drives.json"), "w"))
 
     def save_dirty(self):
-        for n in range(4):
+        for n in (0, 1, 2, 3, 6, 7):
             if self.dirty[n] and self.disks[n] is not None:
-                open(self._path("drive%d.dmk" % n), "wb").write(self.disks[n])
+                open(self._disk_path(n), "wb").write(self.disks[n])
                 self.dirty[n] = False
 
     # -- ROMs and start
@@ -296,9 +310,9 @@ class Cp300:
 
     def publish_slots(self):
         mask = 0
-        for n in range(4):
+        for n in (0, 1, 2, 3, 6, 7):
             size = len(self.disks[n]) if self.disks[n] is not None else 0
-            self.r.write32(R_SIZE + 4 * n, size)
+            self.r.write32(size_reg(n), size)
             if size:
                 mask |= 1 << n
         self.r.write32(R_PRESENT, mask)
@@ -332,30 +346,47 @@ class Cp300:
         self.dirty[n] = True
         self.save_dirty()
         self._save_meta()
-        self.r.write32(R_SIZE + 4 * n, len(dmk))
-        mask = sum(1 << i for i in range(4) if self.disks[i] is not None)
+        self.r.write32(size_reg(n), len(dmk))
+        self._publish_presence(n)
+        return info
+
+    def mount_hd(self, h, blob, name):
+        """Hard disk h (0 or 1): an HDV image, used as it is. Reed's header: 56 CB 10, cylinders at 28,
+        sectors per cylinder at 29 (a multiple of 32), then 256-byte sectors."""
+        blob = bytes(blob)
+        if len(blob) < 512 or blob[0:3] != b"\x56\xcb\x10" or blob[29] % 32:
+            raise ValueError("not an HDV hard disk image (header 56 CB 10, sectors per cylinder a multiple of 32)")
+        n = HD_SLOT + h
+        self.disks[n] = bytearray(blob)
+        self.names[n] = name
+        self.dirty[n] = True
+        self.save_dirty()
+        self._save_meta()
+        self.r.write32(size_reg(n), len(blob))
+        self._publish_presence(n)
+        return {"cylinders": blob[28] or 256, "sectors_per_cylinder": blob[29] or 256}
+
+    def _publish_presence(self, n):
+        mask = sum(1 << i for i in range(8) if self.disks[i] is not None)
         self.r.write32(R_PRESENT, mask)
         self.r.write32(R_CHG_SET, 1 << n)
-        return info
 
     def eject(self, n):
         self.disks[n] = None
         self.names[n] = ""
-        p = self._path("drive%d.dmk" % n)
+        p = self._disk_path(n)
         if os.path.exists(p):
             os.remove(p)
         self._save_meta()
-        self.r.write32(R_SIZE + 4 * n, 0)
-        mask = sum(1 << i for i in range(4) if self.disks[i] is not None)
-        self.r.write32(R_PRESENT, mask)
-        self.r.write32(R_CHG_SET, 1 << n)
+        self.r.write32(size_reg(n), 0)
+        self._publish_presence(n)
 
     def service(self):
         """Answer a request of the IO controller (a piece of a DMK image, up to a whole track)."""
         st = self.r.read32(R_STATUS)
         if not st & ST_PENDING:
             return False
-        slot = self.r.read32(R_REQ_SLOT) & 3
+        slot = self.r.read32(R_REQ_SLOT) & 7
         off = self.r.read32(R_REQ_OFFSET)
         ln = self.r.read32(R_REQ_LEN)
         boff = self.r.read32(R_REQ_BOFF)
@@ -436,6 +467,8 @@ class Cp300:
                 "roms": {"system": self.sysrom is not None, "chargen": self.chargen is not None},
                 "drives": [{"name": self.names[n], "size": len(self.disks[n]) if self.disks[n] is not None else 0}
                            for n in range(4)],
+                "hd": [{"name": self.names[n], "size": len(self.disks[n]) if self.disks[n] is not None else 0}
+                       for n in (HD_SLOT, HD_SLOT + 1)],
                 "stats": self.stats}
 
 
@@ -552,6 +585,20 @@ class Server:
                     dev.save_dirty()
                     return await self.reply(writer, 200, bytes(dev.disks[n]), "application/octet-stream",
                                             'Content-Disposition: attachment; filename="%s"\r\n' % (os.path.splitext(dev.names[n])[0] or "disk") + ".dmk")
+            if parts[0] == "hd" and len(parts) == 2 and parts[1] in "01":
+                h = int(parts[1])
+                if method == "PUT":
+                    info = dev.mount_hd(h, body, q.get("name", ["hd%d.hdv" % h])[0])
+                    await self.push_state()
+                    return await self.json(writer, {"ok": True, "info": info})
+                if method == "DELETE":
+                    dev.eject(HD_SLOT + h)
+                    await self.push_state()
+                    return await self.json(writer, {"ok": True})
+                if method == "GET" and dev.disks[HD_SLOT + h] is not None:
+                    dev.save_dirty()
+                    return await self.reply(writer, 200, bytes(dev.disks[HD_SLOT + h]), "application/octet-stream",
+                                            'Content-Disposition: attachment; filename="%s"\r\n' % (os.path.splitext(dev.names[HD_SLOT + h])[0] or "hd") + ".hdv")
             if parts[0] == "rom" and len(parts) == 2 and method == "PUT":
                 want = {"system": SYS_ROM, "chargen": CHARGEN}.get(parts[1])
                 if want is None or len(body) != want:

@@ -61,6 +61,8 @@ C:\Apps\TangFPGA\Gowin_V1.9.8.11_Education\IDE\bin\gw_sh.exe build.tcl
 Takes about two minutes. Results in `impl/pnr/`: `cp300_tn9k.fs` (bitstream), `cp300_tn9k.rpt.txt` (resources) and `cp300_tn9k.tr` (timing).
 The IO controller firmware is inside the bitstream; the ROMs are not. Put them on the SD card in `/CP300`: `CP300.ROM` (system ROM, or `CP500.ROM`, `CP500P24.ROM`, `TRS80M3.ROM`, chosen in the menu item MACHINE) and `CHARGEN.BIN` (or `NAME.CHR` for a machine of its own). See [roms/README.md](../../roms/README.md).
 
+The two FreeHD hard disks (menu items HD0 and HD1, `*.HDV` images in `/CP300`) work as on the DE0: [Hard disks](../../README.md#hard-disks-freehd). Not compiled or tested on the Tang yet.
+
 Last build: 79% of the logic, all of the block RAM, clk42 44 MHz (42 needed), pixel clock 52 MHz (25.2 needed).
 
 ## Programming

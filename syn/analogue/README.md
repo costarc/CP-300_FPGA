@@ -9,7 +9,7 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 | Video | the core's own 512 x 192 picture at 10.5 MHz / 59.4 Hz, scaled by the Pocket; three aspect modes, three phosphor colours |
 | Audio | 48 kHz 16 bit I2S, mono: the cassette port speaker bit, with volume and on/off in the core settings |
 | Keyboard | on-screen keyboard (Select), buttons as keys when it is hidden |
-| Disks | four WD1793 drives, **DMK** images (`.dsk` / `.dmk`) loaded from the Core Settings menu, read and write |
+| Disks | four WD1793 drives, **DMK** images (`.dsk` / `.dmk`) loaded from the Core Settings menu, read and write; two **FreeHD** hard disks, **HDV** images (`.hdv`) |
 | Not here | cassette, hard disk, RS-232, PS/2 and the original keyboard matrix (those are the DE0/Tang boards' features), save states, docked USB keyboard |
 
 ## Using it
@@ -23,6 +23,8 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 5. At `TRSDOS Ready` (TRSDOS 1.3) type `BASIC`, press ENTER at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` for a file on Drive 1).
 
 **Disks.** The four drives are data slots, shown in the **Core Settings** menu as *Drive 0 (boot)* to *Drive 3*: pick a `.dsk` or `.dmk` file (DMK format; `tools/dsk2dmk.py` in the repository root converts JV1/JV3/HFE) and choose **Reset CP-300**, and the ROM boots it. With no disk in Drive 0 the ROM goes to `Cass?`; the Pocket remembers the file in a slot, so to get back to `Cass?` turn on *Eject all disks* and choose **Reset CP-300**. The Pocket remembers the file you picked and loads the same one at the next start; the core is held in reset until the slots have been read, so a remembered disk is there when the ROM first looks. A file chosen while the core runs swaps the floppy like a real drive. Changes the DOS makes to a disk are written back to the file on the SD card (turn on *Write protect disks* to prevent that).
+
+**Hard disks (FreeHD).** *Hard disk 0 (FreeHD)* and *Hard disk 1 (FreeHD)* in the same menu take `.hdv` images (xtrs / TRS32 / FreHD format, 256-byte header, 256-byte sectors; see the main README). They are data slots 6 and 7, user-reloadable like the drives; the ports `C0`-`CF` answer only while an image is loaded. Boot a floppy with the hard disk driver (LDOS 5.3 / LS-DOS 6 ...) and use the hard disk from there. *Write protect disks* also protects the hard disks. The Pocket remembers the file you picked and loads the same one at the next start; the core is held in reset until the slots have been read, so a remembered disk is there when the ROM first looks. A file chosen while the core runs swaps the floppy like a real drive. Changes the DOS makes to a disk are written back to the file on the SD card (turn on *Write protect disks* to prevent that).
 
 **On-screen keyboard.** *Select* opens it over the lower 128 lines of the picture (the CP-300 keeps running above it) and closes it.
 
@@ -43,6 +45,7 @@ The keyboard is the CP-300's own 8 x 8 matrix (the table in the repository READM
 | Setting | Values | What it does |
 |---|---|---|
 | Drive 0 (boot) .. Drive 3 | file browser | the disk image in that drive |
+| Hard disk 0, Hard disk 1 (FreeHD) | file browser | the `.hdv` image of that hard disk |
 | Phosphor | White / Green / Amber | colour of the text |
 | Turbo CPU | off / on | Z80 at about 4 MHz instead of 2.0 MHz |
 | Sound | on / off | the cassette-port speaker |

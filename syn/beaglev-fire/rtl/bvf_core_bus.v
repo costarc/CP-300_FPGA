@@ -50,6 +50,8 @@ wire  [8:0] fdc_buff_addr;
 wire  [7:0] fdc_buff_dout, fdc_buff_din;
 wire  [1:0] fdc_drive;
 wire  [3:0] drv_ready, drv_wp;
+wire  [3:0] hd_flags;   // hard disk images mounted / write protected
+wire        hd_svc;     // the pending sector request is the hard disk's
 
 wire        rl_we;
 wire [12:0] rl_waddr;
@@ -72,6 +74,8 @@ ht1080z_ext cp300 (
 	.fdc_res_dam(fdc_res_dam), .fdc_buff_addr(fdc_buff_addr), .fdc_buff_dout(fdc_buff_dout),
 	.fdc_buff_din(fdc_buff_din), .fdc_buff_wr(fdc_buff_wr), .fdc_drive(fdc_drive),
 	.fdc_side(fdc_side), .drv_ready(drv_ready), .drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 	.ps2clk(1'b1), .ps2dat(1'b1),
 	.ht_rgb(), .hs(hs_n), .vs(vs_n), .hb(), .vb(),
 	.vid_screen(vid_screen), .vid_ink(vid_ink), .vid_pxen(vid_pxen),
@@ -88,12 +92,12 @@ ht1080z_ext cp300 (
 
 // ---------------------------------------------------------------- IO controller and disk mailbox
 wire        slot_req_tog, slot_req_wr, slot_busy, slot_err, trk_we_io, scan_valid;
-wire  [1:0] slot_num;
+wire  [2:0] slot_num;
 wire [31:0] slot_offset, slot_size;
 wire [15:0] slot_len;
 wire [13:0] slot_boff, trk_addr_io;
 wire  [7:0] trk_din_io, trk_dout_io, io_dbg;
-wire  [3:0] slot_present, slot_changed, slot_chg_clr;
+wire  [7:0] slot_present, slot_changed, slot_chg_clr;
 
 io_ctrl_pocket io_ctrl (
 	.clk(clk), .reset(~run | ~pll_locked), .core_rst(io_hold), .dbg(io_dbg),
@@ -102,6 +106,8 @@ io_ctrl_pocket io_ctrl (
 	.fdc_res_dam(fdc_res_dam), .fdc_drive(fdc_drive), .fdc_side(fdc_side), .fdc_ack(fdc_ack),
 	.fdc_buff_addr(fdc_buff_addr), .fdc_buff_dout(fdc_buff_dout), .fdc_buff_wr(fdc_buff_wr),
 	.fdc_buff_din(fdc_buff_din), .drv_ready(drv_ready), .drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 	.slot_req_tog(slot_req_tog), .slot_req_wr(slot_req_wr), .slot_num(slot_num), .slot_offset(slot_offset),
 	.slot_busy(slot_busy), .slot_err(slot_err), .slot_len(slot_len), .slot_boff(slot_boff),
 	.slot_size(slot_size), .trk_addr(trk_addr_io), .trk_we(trk_we_io), .trk_din(trk_din_io),
@@ -110,9 +116,9 @@ io_ctrl_pocket io_ctrl (
 );
 
 wire        done_pulse, done_err, sz_we, pres_we, scan_we, scan_val;
-wire  [1:0] sz_idx;
+wire  [2:0] sz_idx;
 wire [31:0] sz_val, h_dout_trk;
-wire  [3:0] pres_val, chg_set;
+wire  [7:0] pres_val, chg_set;
 wire [11:0] trk_addr_h;
 wire        trk_we_h;
 
@@ -154,7 +160,7 @@ bvf_regs regs (
 	.run(run), .rst_pulse(rst_pulse), .turbo(turbo), .wp_all(wp_all), .keys(keys),
 	.io_hold(io_hold), .scan_valid(scan_valid), .req_pending(slot_busy), .req_is_wr(slot_req_wr),
 	.req_err(slot_err), .dbg(io_dbg),
-	.req_slot({30'd0, slot_num}), .req_offset(slot_offset), .req_len({16'd0, slot_len}), .req_boff({18'd0, slot_boff}),
+	.req_slot({29'd0, slot_num}), .req_offset(slot_offset), .req_len({16'd0, slot_len}), .req_boff({18'd0, slot_boff}),
 	.frame_cnt(frame_cnt), .frame_latest(frame_latest), .fb_addr(fb_addr), .fb_dout(fb_dout),
 	.aud_count(aud_count), .aud_head(aud_head), .aud_lost(aud_lost), .aud_pop(aud_pop), .aud_clr_lost(aud_clr_lost),
 	.trk_addr(trk_addr_h), .trk_we(trk_we_h), .trk_dout(h_dout_trk),

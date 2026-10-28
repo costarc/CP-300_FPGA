@@ -636,6 +636,8 @@ wire  [8:0] fdc_buff_addr;
 wire  [7:0] fdc_buff_dout, fdc_buff_din;
 wire  [1:0] fdc_drive;
 wire  [3:0] drv_ready, drv_wp;
+wire  [3:0] hd_flags;   // hard disk images mounted / write protected
+wire        hd_svc;     // the pending sector request is the hard disk's
 
 wire [63:0] keys;                           // osd_kbd: the buttons as CP-300 keys
 wire        io_hold;                        // the IO controller holds the CP-300 in reset until the disks are mounted
@@ -680,6 +682,8 @@ ht1080z_ext cp300 (
     .fdc_side(fdc_side),
     .drv_ready(drv_ready),
     .drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 
     .ps2clk(1'b1),
     .ps2dat(1'b1),
@@ -739,16 +743,16 @@ ht1080z_ext cp300 (
 // ------------------------------------------------------------------ IO controller and data slots
 //
 // The helper Z80 serves the floppy controller's sector requests out of the DMK images in data
-// slots 0-3 (drives 0-3), see apf_dataslot.vhd and firmware/pocket.
+// slots 0-3 (drives 0-3) and the HDV images in slots 6 and 7 (hard disks 0 and 1), see apf_dataslot.vhd and firmware/pocket.
 
 wire        slot_req_tog, slot_req_wr, slot_busy, slot_err, trk_we, scan_valid;
-wire  [1:0] slot_num;
+wire  [2:0] slot_num;
 wire [31:0] slot_offset;
 wire [15:0] slot_len;
 wire [13:0] slot_boff, trk_addr;
 wire  [7:0] trk_din, trk_dout;
 wire [31:0] slot_size;
-wire  [3:0] slot_present, slot_changed, slot_chg_clr;
+wire  [7:0] slot_present, slot_changed, slot_chg_clr;
 
 io_ctrl_pocket io_ctrl (
     .clk(clk42),
@@ -775,6 +779,8 @@ io_ctrl_pocket io_ctrl (
     .fdc_buff_din(fdc_buff_din),
     .drv_ready(drv_ready),
     .drv_wp(drv_wp),
+	.hd_flags(hd_flags),
+	.hd_svc(hd_svc),
 
     .slot_req_tog(slot_req_tog),
     .slot_req_wr(slot_req_wr),

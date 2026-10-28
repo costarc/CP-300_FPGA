@@ -23,7 +23,7 @@ SOURCES = [
     "syn/beaglev-fire/rtl/bvf_trk_ram.v", "syn/beaglev-fire/rtl/bvf_audio.v",
     "syn/analogue/src/fpga/core/ht1080z_ext.vhd", "syn/analogue/src/fpga/core/io_ctrl_pocket.vhd",
     "syn/analogue/src/fpga/core/io_fw_pkg.vhd", "syn/analogue/src/fpga/core/cp300_roms_stub.vhd",
-    "rtl/cp300/cp300_rom.vhd", "rtl/fdc/wd1793.vhd",
+    "rtl/cp300/cp300_rom.vhd", "rtl/fdc/wd1793.vhd", "rtl/hdc/wd1010.vhd",
     "rtl/ht1080z/ht1080z.vhd", "rtl/ht1080z/videoctrl.vhd", "rtl/ht1080z/ps2kbd.vhd", "rtl/ht1080z/ps2reader.vhd",
 ]
 T80 = ["T80_Pack", "T80_MCode", "T80_ALU", "T80_Reg", "T80", "T80s", "T80se", "T80a"]   # in compile order

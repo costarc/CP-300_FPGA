@@ -7,8 +7,8 @@
             "description": "Prologica CP-300 (TRS-80 Model III compatible)",
             "author": "costarc",
             "url": "https://github.com/costarc/CP-300_FPGA",
-            "version": "0.1.0",
-            "date_release": "2026-10-25"
+            "version": "0.3.0",
+            "date_release": "2026-10-28"
         },
         "framework": {
             "target_product": "Analogue Pocket",

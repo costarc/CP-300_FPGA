@@ -29,6 +29,8 @@ architecture sim of tb_sys is
   signal fdc_buff_dout, fdc_buff_din : std_logic_vector(7 downto 0);
   signal fdc_drive : std_logic_vector(1 downto 0);
   signal drv_ready, drv_wp : std_logic_vector(3 downto 0);
+  signal hd_flags : std_logic_vector(3 downto 0);
+  signal hd_svc : std_logic;
 begin
   clk <= not clk after 11.905 ns;  -- 42 MHz
   reset <= '0' after 2 us;
@@ -46,7 +48,7 @@ begin
               fdc_drive => fdc_drive,
               fdc_side => fdc_side, fdc_ack => fdc_ack, fdc_buff_addr => fdc_buff_addr,
               fdc_buff_dout => fdc_buff_dout, fdc_buff_wr => fdc_buff_wr, fdc_buff_din => fdc_buff_din,
-              drv_ready => drv_ready, drv_wp => drv_wp);
+              drv_ready => drv_ready, drv_wp => drv_wp, hd_svc => hd_svc, hd_flags => hd_flags);
 
   sdcard : entity work.sdcard_model
     port map (sd_cs_n => sd_cs_n, spi_sck => spi_sck, spi_mosi => spi_mosi, sd_miso => sd_miso);
@@ -61,7 +63,7 @@ begin
       fdc_res_dam => fdc_res_dam,
       fdc_buff_addr => fdc_buff_addr, fdc_buff_dout => fdc_buff_dout, fdc_buff_din => fdc_buff_din,
       fdc_buff_wr => fdc_buff_wr, fdc_drive => fdc_drive, fdc_side => fdc_side,
-      drv_ready => drv_ready, drv_wp => drv_wp,
+      drv_ready => drv_ready, drv_wp => drv_wp, hd_svc => hd_svc, hd_flags => hd_flags,
       ps2clk => kclk, ps2dat => kdat,
       ht_rgb => open, hs => open, vs => open, hb => open, vb => open, audiomix => open,
       dn_go => '0', dn_wr => '0', dn_addr => (others => '0'), dn_data => (others => '0'),

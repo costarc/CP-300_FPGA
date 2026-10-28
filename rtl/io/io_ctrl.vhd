@@ -20,12 +20,13 @@
 --   07  r: A5 (identification)
 --   08  w: debug byte (reported in simulation)
 --   10  r: floppy controller request: b0 read sector, b1 write sector, b2 read address, b3 side,
---       b5:4 drive, b6 write a deleted data mark
+--       b5:4 drive, b6 write a deleted data mark, b7 the request is the hard disk's (then: 10 b0 read, b1 write,
+--       b5:4 hard disk, 11 cylinder low, 12 b1:0 cylinder high + b4:2 head, 17 sector; 256-byte sectors)
 --   11  r: head position (track) of the drive    12  r: track register    17  r: sector number
 --   13  w: b0 = acknowledge: the buffer pointer goes to 0 and the buffer port is live while set
 --   14  rw: sector buffer data port, auto-increment (write fills it for a read request, read
 --       empties it for a write request)
---   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected
+--   15  w: drive flags: b1:0 drive, b2 disk present, b3 write protected, b4 hard disk (drive 0 or 1)
 --   18  w: start a ROM load: b0 = 0 system ROM (16 KB), 1 character generator (2 KB); the pointer goes to 0
 --   19  w: next byte of the ROM image (four bytes make a word for the core's ROM RAM, rl_*; a
 --       character generator load also fills the OSD font)
@@ -84,7 +85,11 @@ entity io_ctrl is
     fdc_buff_wr   : out std_logic;
     fdc_buff_din  : in  std_logic_vector(7 downto 0);
     drv_ready   : out std_logic_vector(3 downto 0);
-    drv_wp      : out std_logic_vector(3 downto 0)
+    drv_wp      : out std_logic_vector(3 downto 0);
+
+    -- hard disk (FreeHD): the pending sector request is the hard disk's; images mounted / write protected
+    hd_svc      : in  std_logic;
+    hd_flags    : out std_logic_vector(3 downto 0)
   );
 end io_ctrl;
 
@@ -108,6 +113,7 @@ architecture rtl of io_ctrl is
   signal baddr : unsigned(8 downto 0) := (others => '0');
   signal bdout : std_logic_vector(7 downto 0) := (others => '0');
   signal dr_ready, dr_wp : std_logic_vector(3 downto 0) := (others => '0');
+  signal hd_rdy, hd_prot : std_logic_vector(1 downto 0) := (others => '0');
   signal res_r : std_logic_vector(2 downto 0) := (others => '0');
   signal rd_port : std_logic_vector(7 downto 0) := (others => '0');
   signal port_a  : std_logic_vector(7 downto 0);
@@ -401,6 +407,7 @@ begin
       if reset = '1' then
         ack_r <= '0'; baddr <= (others => '0');
         dr_ready <= (others => '0'); dr_wp <= (others => '0'); res_r <= (others => '0');
+        hd_rdy <= (others => '0'); hd_prot <= (others => '0');
       else
         if bw_r = '1' then baddr <= baddr + 1; end if;
         if cen = '1' and rdp = '1' and rd_port = x"14" then baddr <= baddr + 1; end if;
@@ -413,7 +420,11 @@ begin
               bdout <= cpu_do; bw_r <= '1';
             when x"15" =>
               d := to_integer(unsigned(cpu_do(1 downto 0)));
-              dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3);
+              if cpu_do(4) = '1' then                   -- hard disk d (0 or 1)
+                hd_rdy(d mod 2) <= cpu_do(2); hd_prot(d mod 2) <= cpu_do(3);
+              else
+                dr_ready(d) <= cpu_do(2); dr_wp(d) <= cpu_do(3);
+              end if;
             when x"16" =>
               res_r <= cpu_do(2 downto 0);
             when others => null;
@@ -427,6 +438,7 @@ begin
   fdc_buff_dout <= bdout;
   fdc_buff_wr <= bw_r;
   drv_ready <= dr_ready; drv_wp <= dr_wp;
+  hd_flags <= hd_prot & hd_rdy;
   fdc_res_found <= res_r(0); fdc_res_crc <= res_r(1); fdc_res_dam <= res_r(2);
 
   -- control register and glyph select
@@ -460,7 +472,7 @@ begin
         "0000000" & kbd_avail when port_a = x"02" else
         fifo_do when port_a = x"03" else
         gcolbyte when port_a = x"05" else
-        '0' & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
+        hd_svc & fdc_dam & fdc_drive & fdc_side & fdc_ra & fdc_wr & fdc_rd when port_a = x"10" else
         fdc_track when port_a = x"11" else
         fdc_trkreg when port_a = x"12" else
         fdc_sector when port_a = x"17" else

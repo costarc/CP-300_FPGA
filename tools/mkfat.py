@@ -85,7 +85,62 @@ def boot_disk():
         ("label", "msg_ok"), b"FDC OK ",
         ("label", "msg_bad"), b"FDC BAD",
     ]
-    code, _ = z80_asm(prog, 0x4300)
+    return boot_dmk(z80_asm(prog, 0x4300)[0])
+
+
+def hd_boot_disk():
+    """Boot disk whose boot sector tests the FreeHD controller (ports C0-CF) on the image hd_image():
+    READ cylinder 1 head 1 sector 5 (an odd sector of the image, the second half of a 512-byte block),
+    WRITE it changed, READ it again, READ sector 4 (an even one). Prints "BOOT OK", then "HD OK  " or
+    "HD BAD ". The sector at index s holds byte i = i + 7 s."""
+    I = lambda *b: bytes(b)
+    prog = [
+        (I(0x21), "abs", "msg_boot"), I(0x11, 0x00, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
+        I(0x3E, 0x08, 0xD3, 0xC1),                       # enable the controller
+        I(0x3E, 0x05, 0x21, 0x00, 0x44), (I(0xCD), "abs", "hdrd"),
+        I(0x3A, 0x00, 0x44, 0xFE, 0xC3), (I(0x20), "rel", "bad"),
+        I(0x3A, 0xFF, 0x44, 0xFE, 0xC2), (I(0x20), "rel", "bad"),
+        I(0x3E, 0x77, 0x32, 0x00, 0x44),
+        I(0x3E, 0x05, 0x21, 0x00, 0x44), (I(0xCD), "abs", "hdwr"),
+        I(0x3E, 0x05, 0x21, 0x00, 0x45), (I(0xCD), "abs", "hdrd"),
+        I(0x3A, 0x00, 0x45, 0xFE, 0x77), (I(0x20), "rel", "bad"),
+        I(0x3A, 0x01, 0x45, 0xFE, 0xC4), (I(0x20), "rel", "bad"),
+        I(0x3E, 0x04, 0x21, 0x00, 0x46), (I(0xCD), "abs", "hdrd"),
+        I(0x3A, 0x00, 0x46, 0xFE, 0xBC), (I(0x20), "rel", "bad"),
+        (I(0x21), "abs", "msg_ok"), (I(0x18), "rel", "print"),
+        ("label", "bad"), (I(0x21), "abs", "msg_bad"),
+        ("label", "print"), I(0x11, 0x40, 0x3C, 0x01, 0x07, 0x00, 0xED, 0xB0),
+        ("label", "halt"), (I(0x18), "rel", "halt"),
+        # A = sector; cylinder 1, head 1, drive 0
+        ("label", "hdset"), I(0xD3, 0xCB, 0x3E, 0x01, 0xD3, 0xCE, 0xD3, 0xCC, 0xAF, 0xD3, 0xCD, 0xC9),
+        ("label", "hdrd"), (I(0xCD), "abs", "hdset"), I(0x3E, 0x20, 0xD3, 0xCF), (I(0xCD), "abs", "wdrq"),
+        I(0x06, 0x00, 0x0E, 0xC8, 0xED, 0xB2), (I(0x18), "rel", "wbusy"),
+        ("label", "hdwr"), (I(0xCD), "abs", "hdset"), I(0x3E, 0x30, 0xD3, 0xCF), (I(0xCD), "abs", "wdrq"),
+        I(0x06, 0x00, 0x0E, 0xC8, 0xED, 0xB3),
+        ("label", "wbusy"), I(0xDB, 0xCF, 0xCB, 0x7F), (I(0x20), "rel", "wbusy"), I(0xC9),
+        ("label", "wdrq"), I(0xDB, 0xCF, 0xE6, 0x09), (I(0x28), "rel", "wdrq"), I(0xC9),
+        ("label", "msg_boot"), b"BOOT OK",
+        ("label", "msg_ok"), b"HD OK  ",
+        ("label", "msg_bad"), b"HD BAD ",
+    ]
+    return boot_dmk(z80_asm(prog, 0x4300)[0])
+
+
+def hd_image():
+    """HDV image (Matthew Reed's format): 256-byte header, 4 cylinders of 2 heads x 32 sectors of 256
+    bytes; the sector at index s (cylinder, head, sector in that order) holds byte i = i + 7 s."""
+    hdr = bytearray(256)
+    hdr[0:3] = bytes([0x56, 0xCB, 0x10])
+    hdr[4] = 1
+    hdr[5] = 4
+    hdr[28] = 4                      # cylinders
+    hdr[29] = 64                     # sectors per cylinder: 2 heads
+    body = b"".join(bytes((i + 7 * s) & 255 for i in range(256)) for s in range(4 * 64))
+    return bytes(hdr) + body
+
+
+def boot_dmk(code):
+    """DMK with the boot sector code on track 0 sector 1 (and the test data of boot_disk)."""
     assert len(code) <= 256
     import dsk2dmk
     disk = dsk2dmk.Disk()
@@ -103,12 +158,20 @@ def boot_disk():
     return dsk2dmk.write_dmk(disk)
 
 
-def test_files():
+def test_files(boot="BOOT"):
     def gen(n, salt):
         return bytes((i * 7 + salt) & 255 for i in range(n))
-    cfg = (b"C3" + b"BOOT    DSK" + b" " * 44).ljust(512, b"\0")
+    # slots: drives 0-3, cassette, machine, hard disks 0-1
+    cfg = (b"C3" + short_name(boot + ".DSK") + b" " * (11 * 7)).ljust(512, b"\0")
+    if boot == "HDBOOT":
+        cfg = cfg[:2 + 11 * 6] + short_name("TEST.HDV") + cfg[2 + 11 * 7:]
     return {
         "BOOT.DSK": boot_disk(),
+        "HDBOOT.DSK": hd_boot_disk(),
+        "TEST.HDV": hd_image(),
+        # the firmware loads the machine from the card; the simulation keeps its built-in ROM and ignores these
+        "CP300.ROM": bytes(16384),
+        "CHARGEN.BIN": bytes(2048),
         "TRSDOS13.DSK": gen(40 * 18 * 256, 1),
         "LDOS.DSK": gen(40 * 18 * 256 + 512, 2),
         "GAME.CAS": gen(5000, 3),
@@ -238,11 +301,13 @@ def main():
     ap.add_argument("--files")
     ap.add_argument("--clusters", type=int, help="FAT16 cluster count (>= 4085), e.g. 4200 for a 2 MB simulation image")
     ap.add_argument("--spc", type=int, help="sectors per cluster")
+    ap.add_argument("--boot", default="BOOT", choices=["BOOT", "HDBOOT"],
+                    help="disk the generated CP300.CFG mounts in drive 0 (HDBOOT also mounts TEST.HDV as hard disk 0)")
     a = ap.parse_args()
     if a.files:
         files = {n: open(os.path.join(a.files, n), "rb").read() for n in sorted(os.listdir(a.files))}
     else:
-        files = test_files()
+        files = test_files(a.boot)
     build(a.out, a.fat32, files, a.clusters, a.spc)
 
 

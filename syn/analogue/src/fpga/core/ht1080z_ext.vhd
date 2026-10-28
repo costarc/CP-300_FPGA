@@ -31,6 +31,8 @@ clk42m : in  STD_LOGIC;
        fdc_buff_wr : in  std_logic;
          fdc_drive : out std_logic_vector(1 downto 0);
           fdc_side : out std_logic;
+         hd_svc : out std_logic;
+         hd_flags : in  std_logic_vector(3 downto 0);
          drv_ready : in  std_logic_vector(3 downto 0);
             drv_wp : in  std_logic_vector(3 downto 0);
 
@@ -121,6 +123,8 @@ begin
     fdc_buff_wr => fdc_buff_wr,
     fdc_drive => fdc_drive,
     fdc_side => fdc_side,
+    hd_svc => hd_svc,
+    hd_flags => hd_flags,
     drv_ready => drv_ready,
     drv_wp => drv_wp,
     ps2clk => ps2clk,

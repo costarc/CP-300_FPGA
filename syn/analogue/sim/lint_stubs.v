@@ -6,7 +6,7 @@ module ht1080z_ext (
 	output fdc_svc_rd, output fdc_svc_wr, output fdc_svc_ra, output [7:0] fdc_svc_track, output [7:0] fdc_svc_trkreg,
 	output [7:0] fdc_svc_sector, output fdc_svc_dam, input fdc_svc_ack, input fdc_res_found, input fdc_res_crc,
 	input fdc_res_dam, input [8:0] fdc_buff_addr, input [7:0] fdc_buff_dout, output [7:0] fdc_buff_din,
-	input fdc_buff_wr, output [1:0] fdc_drive, output fdc_side, input [3:0] drv_ready, input [3:0] drv_wp,
+	input fdc_buff_wr, output [1:0] fdc_drive, output fdc_side, input [3:0] drv_ready, input [3:0] drv_wp, output hd_svc, input [3:0] hd_flags,
 	input ps2clk, input ps2dat, output [17:0] ht_rgb, output [17:0] vid_ink_rgb, output [17:0] vid_paper_rgb,
 	output [17:0] vid_border_rgb, output vid_screen, output vid_ink, output vid_pxen, output hs, output vs,
 	output hb, output vb, output [8:0] audiomix,
@@ -24,10 +24,10 @@ module io_ctrl_pocket #(parameter CPU_HALF = 1'b1) (
 	input fdc_rd, input fdc_wr, input fdc_ra, input [7:0] fdc_track, input [7:0] fdc_trkreg, input [7:0] fdc_sector,
 	input fdc_dam, output fdc_res_found, output fdc_res_crc, output fdc_res_dam, input [1:0] fdc_drive,
 	input fdc_side, output fdc_ack, output [8:0] fdc_buff_addr, output [7:0] fdc_buff_dout, output fdc_buff_wr,
-	input [7:0] fdc_buff_din, output [3:0] drv_ready, output [3:0] drv_wp,
-	output slot_req_tog, output slot_req_wr, output [1:0] slot_num, output [31:0] slot_offset, input slot_busy,
+	input [7:0] fdc_buff_din, output [3:0] drv_ready, output [3:0] drv_wp, input hd_svc, output [3:0] hd_flags,
+	output slot_req_tog, output slot_req_wr, output [2:0] slot_num, output [31:0] slot_offset, input slot_busy,
 	input slot_err, output [8:0] rx_addr, input [7:0] rx_data, output tx_we, output [8:0] tx_addr,
-	output [7:0] tx_data, input [3:0] slot_present, input [3:0] slot_changed, output [3:0] slot_chg_clr,
+	output [7:0] tx_data, input [7:0] slot_present, input [7:0] slot_changed, output [7:0] slot_chg_clr,
 	input scan_valid, input opt_wp);
 endmodule
 
@@ -39,9 +39,9 @@ module apf_dataslot (
 	input [2:0] target_dataslot_err, output [15:0] target_dataslot_id, output [31:0] target_dataslot_slotoffset,
 	output [31:0] target_dataslot_bridgeaddr, output [31:0] target_dataslot_length,
 	output [9:0] datatable_addr, input [31:0] datatable_q,
-	input req_tog, input req_wr, input [1:0] req_slot, input [31:0] req_offset, output busy, output err,
+	input req_tog, input req_wr, input [2:0] req_slot, input [31:0] req_offset, output busy, output err,
 	input [8:0] rx_addr, output [7:0] rx_data, input tx_we, input [8:0] tx_addr, input [7:0] tx_data,
-	output [3:0] present, output [3:0] changed, input [3:0] chg_clr, output scan_valid);
+	output [7:0] present, output [7:0] changed, input [7:0] chg_clr, output scan_valid);
 endmodule
 
 module osd_font (input clk, input [10:0] addr, output reg [7:0] dout,

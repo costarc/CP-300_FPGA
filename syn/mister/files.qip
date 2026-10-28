@@ -7,6 +7,7 @@ set_global_assignment -name VHDL_FILE ../analogue/src/fpga/core/cp300_roms_stub.
 set_global_assignment -name VHDL_FILE ../analogue/src/fpga/core/ht1080z_ext.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/cp300/cp300_rom.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/fdc/wd1793.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/hdc/wd1010.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ht1080z.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/videoctrl.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/ht1080z/ps2kbd.vhd

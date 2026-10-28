@@ -30,10 +30,12 @@
 #define K_PGDN  7
 
 #define NDRIVES 4
+#define NHD     2                      /* FreeHD hard disk images */
 #define MACH    (NDRIVES + 1)          /* slot of the machine ROM file */
-#define NSLOT   (NDRIVES + 2)          /* mounted names kept: drives, cassette, machine */
-#define NITEMS  (NDRIVES + 3)          /* menu items: slots, then reset */
-#define ITEM_RESET (NDRIVES + 2)
+#define HD0     (NDRIVES + 2)          /* slots of the hard disk images */
+#define NSLOT   (NDRIVES + 2 + NHD)    /* mounted names kept: drives, cassette, machine, hard disks */
+#define NITEMS  (NDRIVES + 3 + NHD)    /* menu items: slots, then reset */
+#define ITEM_RESET (NDRIVES + 2 + NHD)
 #define MAXLIST 40
 
 #define ST_CLOSED 0
@@ -55,10 +57,10 @@ static char mount_name[NSLOT][11];
 static file_t cfg_file;
 static uint8_t cfg_ok;
 
-static uint8_t sel;                  /* main menu selection, 0..6 */
-/* screen row of the selectable items: drives 0-3, cassette, machine, reset */
-static const uint8_t item_row[NITEMS] = { 2, 3, 4, 5, 7, 8, 10 };
-static uint8_t browse_target;        /* 0-3 drive, 4 cassette, 5 machine */
+static uint8_t sel;                  /* main menu selection, 0..ITEM_RESET */
+/* screen row of the selectable items: drives 0-3, cassette, machine, hard disks, reset */
+static const uint8_t item_row[NITEMS] = { 2, 3, 4, 5, 7, 8, 9, 10, 12 };
+static uint8_t browse_target;        /* 0-3 drive, 4 cassette, 5 machine, 6-7 hard disk */
 
 /* ROM load state */
 static uint8_t rom_ok;
@@ -76,9 +78,17 @@ static uint8_t sector[512];
 static dmk_t drive[NDRIVES];
 static uint8_t drive_ok[NDRIVES];
 
+/* FreeHD hard disks: HDV images (Matthew Reed's format: 256-byte header, then 256-byte sectors,
+ * 32 sectors per track, cylinder-major) */
+static file_t hdf[NHD];
+static uint8_t hd_ok[NHD];
+static uint16_t hd_cyls[NHD];
+static uint16_t hd_spc[NHD];         /* sectors per cylinder */
+
 static const char cfg_magic[] = "C3";
 static const char ext_dsk[] = "DSK";
 static const char ext_cas[] = "CAS";
+static const char ext_hdv[] = "HDV";
 static const char ext_rom[] = "ROM";
 static const char name_rom[] = "CP300   ROM";
 static const char name_chargen[] = "CHARGEN BIN";
@@ -275,6 +285,59 @@ static void mount_drive(uint8_t d)
 	DRV_FLAGS = flags;
 }
 
+/* tell the hard disk controller what is in hard disk d (a .HDV image) */
+static void mount_hd(uint8_t d)
+{
+	dirent_t e;
+	uint8_t flags = 0x10 | d;
+
+	hd_ok[d] = 0;
+	if (have_dir && mount_name[HD0 + d][0] != ' ' && dir_find(cp300_dir, mount_name[HD0 + d], &e)) {
+		file_open(&hdf[d], &e);
+		if (!file_read(&hdf[d], 0, sector) && sector[0] == 0x56 && sector[1] == 0xCB && sector[2] == 0x10 &&
+		    !(sector[29] & 31)) {
+			hd_ok[d] = 1;
+			hd_cyls[d] = sector[28] ? sector[28] : 256;
+			hd_spc[d] = sector[29] ? sector[29] : 256;
+			flags |= 0x04;
+			if ((e.attr & 0x01) || (sector[7] & 0x80))
+				flags |= 0x08;
+		}
+	}
+	DRV_FLAGS = flags;
+}
+
+/* answer a request of the hard disk controller: read or write the sector (cylinder, head, sector) */
+static void hd_service(uint8_t req)
+{
+	uint8_t d = (req >> 4) & 1, head = (FDC_TRKREG >> 2) & 7, sec = FDC_SEC, res = 0;
+	uint16_t cyl = ((uint16_t)(FDC_TRKREG & 3) << 8) | FDC_TRK, x, n;
+	uint16_t blk = 0;
+	uint8_t *p = sector;
+
+	if (hd_ok[d] && cyl < hd_cyls[d] && head < (hd_spc[d] >> 5) && sec <= 32) {
+		/* sector index x in the image; its file offset is 256 * (x + 1) */
+		x = cyl * hd_spc[d] + ((uint16_t)head << 5) + (sec & 31);
+		blk = (x >> 1) + (x & 1);
+		if (!(x & 1))
+			p += 256;
+		res = !file_read(&hdf[d], blk, sector);
+	}
+	if (req & 1) {
+		FDC_RES = res;
+		FDC_ACK = 1;
+		if (res)
+			for (n = 0; n < 256; n++)
+				FDC_BUF = p[n];
+	} else {
+		FDC_ACK = 1;                    /* the controller holds the data; the write is done under ACK */
+		for (n = 0; n < 256; n++)
+			p[n] = FDC_BUF;
+		FDC_RES = res && !file_write(&hdf[d], blk, sector);
+	}
+	FDC_ACK = 0;
+}
+
 /* answer a request of the floppy controller: read or write a sector, or the next ID field */
 static void fdc_service(void)
 {
@@ -284,6 +347,10 @@ static void fdc_service(void)
 
 	if (!(req & 7))
 		return;
+	if (req & 0x80) {
+		hd_service(req);
+		return;
+	}
 	d = (req >> 4) & 3;
 	side = (req >> 3) & 1;
 	trk = FDC_TRK;
@@ -406,6 +473,8 @@ static void card_start(void)
 		cfg_load();
 		for (i = 0; i < NDRIVES; i++)
 			mount_drive(i);
+		for (i = 0; i < NHD; i++)
+			mount_hd(i);
 	}
 }
 
@@ -418,10 +487,12 @@ static void draw_main(void)
 
 	clear_screen();
 	put(0, 1, "CP-300 FPGA");
-	for (i = 0; i < NDRIVES; i++) {
-		put(item_row[i], 1, "DRIVE");
-		scr[item_row[i]][7] = '0' + i;
-		scr[item_row[i]][8] = ':';
+	for (i = 0; i < NSLOT; i++) {
+		if (i == NDRIVES || i == MACH)
+			continue;
+		put(item_row[i], 1, i < NDRIVES ? "DRIVE" : "HD");
+		scr[item_row[i]][i < NDRIVES ? 7 : 4] = '0' + (i < NDRIVES ? i : i - HD0);
+		scr[item_row[i]][i < NDRIVES ? 8 : 5] = ':';
 		fmt_name(nm, mount_name[i]);
 		put(item_row[i], 10, nm);
 	}
@@ -437,9 +508,9 @@ static void draw_main(void)
 	}
 	put(item_row[ITEM_RESET], 1, "RESET CP-300");
 	if (rom_ok) {
-		put(12, 1, "ROM:");
+		put(13, 1, "ROM:");
 		fmt_name(nm, rom_name);
-		put(12, 6, nm);
+		put(13, 6, nm);
 	}
 	if (!sd_ok) {
 		put(14, 1, "NO SD CARD, ERROR ");
@@ -461,7 +532,7 @@ static void list_build(uint8_t target)
 {
 	dir_t d;
 	dirent_t e;
-	const char *ext = (target == NDRIVES) ? ext_cas : (target == MACH) ? ext_rom : ext_dsk;
+	const char *ext = (target == NDRIVES) ? ext_cas : (target == MACH) ? ext_rom : (target >= HD0) ? ext_hdv : ext_dsk;
 	uint8_t k;
 
 	nlist = 0;
@@ -490,6 +561,9 @@ static void draw_browse(void)
 		put(0, 1, "SELECT MACHINE (ROM)");
 	} else if (browse_target == NDRIVES) {
 		put(0, 1, "SELECT CASSETTE FILE");
+	} else if (browse_target >= HD0) {
+		put(0, 1, "SELECT HD IMAGE FOR HD");
+		scr[0][23] = '0' + browse_target - HD0;
 	} else {
 		put(0, 1, "SELECT DISK FOR DRIVE");
 		scr[0][23] = '0' + browse_target;
@@ -602,6 +676,8 @@ static void browse_key(uint8_t k)
 			mount_name[browse_target][j] = list[cursor][j];
 		if (browse_target < NDRIVES)
 			mount_drive(browse_target);
+		else if (browse_target >= HD0)
+			mount_hd(browse_target - HD0);
 		cfg_save();
 		state = ST_MAIN;
 		draw_main();

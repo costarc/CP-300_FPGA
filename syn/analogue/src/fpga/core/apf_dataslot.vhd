@@ -12,8 +12,8 @@
 -- The bridge is big endian here (bridge_endian_little = 0): the first byte of a word is bits 31:24.
 --
 -- This block also watches the data slot size table (a RAM of core_bridge_cmd, filled by the framework
--- for every slot) and the "data slot update" event, so the IO controller knows which of the four
--- drive slots hold a file and when a file was replaced.
+-- for every slot) and the "data slot update" event, so the IO controller knows which of the
+-- slots 0-7 hold a file (0-3 the floppy drives, 6 and 7 the hard disks) and when a file was replaced.
 --
 -- Two clocks: clk_74a (bridge) and clk (the core, 42 MHz). Everything that crosses is a toggle or a
 -- static value.
@@ -54,7 +54,7 @@ entity apf_dataslot is
     -- IO controller (clk), see io_ctrl_pocket
     req_tog     : in  std_logic;
     req_wr      : in  std_logic;
-    req_slot    : in  std_logic_vector(1 downto 0);
+    req_slot    : in  std_logic_vector(2 downto 0);
     req_offset  : in  std_logic_vector(31 downto 0);
     req_len     : in  std_logic_vector(15 downto 0);    -- bytes (at most 16384)
     req_boff    : in  std_logic_vector(13 downto 0);    -- where in the track RAM
@@ -65,16 +65,16 @@ entity apf_dataslot is
     trk_din     : in  std_logic_vector(7 downto 0);
     trk_dout    : out std_logic_vector(7 downto 0);
     size_sel    : out std_logic_vector(31 downto 0);    -- size of the file in the slot req_slot
-    present     : out std_logic_vector(3 downto 0);
-    changed     : out std_logic_vector(3 downto 0);
-    chg_clr     : in  std_logic_vector(3 downto 0);
+    present     : out std_logic_vector(7 downto 0);
+    changed     : out std_logic_vector(7 downto 0);
+    chg_clr     : in  std_logic_vector(7 downto 0);
     scan_valid  : out std_logic
   );
 end apf_dataslot;
 
 architecture rtl of apf_dataslot is
 
-  type sz_t is array (0 to 3) of std_logic_vector(31 downto 0);
+  type sz_t is array (0 to 7) of std_logic_vector(31 downto 0);
   type st_t is (S_IDLE, S_ISSUE, S_TAKEN, S_WAIT, S_FIN);
   type sc_t is (C_A0, C_A1, C_A2, C_A3, C_B0, C_B1, C_B2, C_B3);
 
@@ -97,15 +97,18 @@ architecture rtl of apf_dataslot is
   signal dt_addr: std_logic_vector(9 downto 0) := (others => '0');
   signal id_tmp : std_logic_vector(15 downto 0) := (others => '0');
   signal new_sz, cur_sz : sz_t := (others => (others => '0'));
-  signal present_74 : std_logic_vector(3 downto 0) := (others => '0');
-  signal chg_tog : std_logic_vector(3 downto 0) := (others => '0');
+  signal present_74 : std_logic_vector(7 downto 0) := (others => '0');
+  signal chg_tog : std_logic_vector(7 downto 0) := (others => '0');
+  -- "data slot update" seen: reported at the end of the second pass after it, when the scan has certainly
+  -- read the new size (a toggle is lost if two come before the firmware looks, so a slot gets one report)
+  signal upd1, upd2 : std_logic_vector(7 downto 0) := (others => '0');
   signal scan_ok : std_logic := '0';
 
   -- clk domain
   signal ds1, ds2 : std_logic := '0';
-  signal pr1, pr2 : std_logic_vector(3 downto 0) := (others => '0');
-  signal cg1, cg2 : std_logic_vector(3 downto 0) := (others => '0');
-  signal seen     : std_logic_vector(3 downto 0) := (others => '0');
+  signal pr1, pr2 : std_logic_vector(7 downto 0) := (others => '0');
+  signal cg1, cg2, cg3, cg4 : std_logic_vector(7 downto 0) := (others => '0');   -- cg3, cg4: `changed` arrives after `present`
+  signal seen     : std_logic_vector(7 downto 0) := (others => '0');
   signal sv1, sv2 : std_logic := '0';
   signal eb1, eb2 : std_logic := '0';
   signal er1, er2 : std_logic := '0';
@@ -169,7 +172,7 @@ begin
         case st is
           when S_IDLE =>
             if rq2 /= rq3 then
-              slot_74 <= x"000" & "00" & req_slot;
+              slot_74 <= x"000" & '0' & req_slot;
               st <= S_ISSUE;
             end if;
           when S_ISSUE =>
@@ -207,13 +210,9 @@ begin
     if rising_edge(clk_74a) then
       if reset_n_74 = '0' then
         sc <= C_A0; ent <= (others => '0'); scan_ok <= '0';
-        present_74 <= (others => '0'); chg_tog <= (others => '0');
+        present_74 <= (others => '0'); chg_tog <= (others => '0'); upd1 <= (others => '0'); upd2 <= (others => '0');
         new_sz <= (others => (others => '0')); cur_sz <= (others => (others => '0'));
       else
-        if dataslot_update = '1' and dataslot_update_id(15 downto 2) = "00000000000000" then
-          n := to_integer(unsigned(dataslot_update_id(1 downto 0)));
-          chg_tog(n) <= not chg_tog(n);
-        end if;
         case sc is
           when C_A0 => dt_addr <= "0000" & std_logic_vector(ent) & "0"; sc <= C_A1;
           when C_A1 => sc <= C_A2;
@@ -223,19 +222,26 @@ begin
           when C_B1 => sc <= C_B2;
           when C_B2 => sc <= C_B3;
           when C_B3 =>
-            if datatable_q /= x"00000000" and id_tmp(15 downto 2) = "00000000000000" then
-              new_sz(to_integer(unsigned(id_tmp(1 downto 0)))) <= datatable_q;
+            if datatable_q /= x"00000000" and id_tmp(15 downto 3) = "0000000000000" then
+              new_sz(to_integer(unsigned(id_tmp(2 downto 0)))) <= datatable_q;
             end if;
             sc <= C_A0;
             ent <= ent + 1;
             if ent = 31 then
               -- end of a pass
-              for i in 0 to 3 loop
+              for i in 0 to 7 loop
                 if new_sz(i) /= x"00000000" then present_74(i) <= '1'; else present_74(i) <= '0'; end if;
-                if new_sz(i) /= cur_sz(i) then
-                  if not (dataslot_update = '1' and to_integer(unsigned(dataslot_update_id(1 downto 0))) = i) then
-                    chg_tog(i) <= not chg_tog(i);
-                  end if;
+                -- one change report per change, after `present` is up to date: the firmware must not look at
+                -- a slot that was just replaced before the table says so
+                if upd2(i) = '1' then
+                  chg_tog(i) <= not chg_tog(i);
+                  upd2(i) <= '0';
+                elsif new_sz(i) /= cur_sz(i) and upd1(i) = '0' then
+                  chg_tog(i) <= not chg_tog(i);
+                end if;
+                if upd1(i) = '1' then
+                  upd2(i) <= '1';
+                  upd1(i) <= '0';
                 end if;
                 cur_sz(i) <= new_sz(i);
                 new_sz(i) <= (others => '0');
@@ -243,6 +249,9 @@ begin
               scan_ok <= '1';
             end if;
         end case;
+        if dataslot_update = '1' and dataslot_update_id(15 downto 3) = "0000000000000" then
+          upd1(to_integer(unsigned(dataslot_update_id(2 downto 0)))) <= '1';
+        end if;
       end if;
     end if;
   end process;
@@ -253,14 +262,14 @@ begin
     if rising_edge(clk) then
       ds1 <= done_tog; ds2 <= ds1;
       pr1 <= present_74; pr2 <= pr1;
-      cg1 <= chg_tog;    cg2 <= cg1;
+      cg1 <= chg_tog;    cg2 <= cg1;    cg3 <= cg2;    cg4 <= cg3;
       sv1 <= scan_ok;    sv2 <= sv1;
       er1 <= err_74;     er2 <= er1;
       if reset = '1' then
         seen <= (others => '0');
       else
-        for i in 0 to 3 loop
-          if chg_clr(i) = '1' then seen(i) <= cg2(i); end if;
+        for i in 0 to 7 loop
+          if chg_clr(i) = '1' then seen(i) <= cg4(i); end if;
         end loop;
       end if;
     end if;
@@ -270,7 +279,7 @@ begin
   busy       <= req_tog xor ds2;
   err        <= er2;
   present    <= pr2;
-  changed    <= cg2 xor seen;
+  changed    <= cg4 xor seen;
   scan_valid <= sv2;
 
 end rtl;

@@ -79,13 +79,13 @@ wire [15:0] frame_cnt; wire frame_latest; wire [12:0] fb_addr; wire [31:0] fb_do
 wire [8:0]  aud_count; wire [31:0] aud_head; wire aud_lost, aud_pop, aud_clr_lost;
 wire [11:0] trk_addr_h; wire trk_we_h; wire [31:0] h_dout_trk;
 wire        done_pulse, done_err, sz_we, pres_we, scan_we, scan_val;
-wire  [1:0] sz_idx; wire [31:0] sz_val; wire [3:0] pres_val, chg_set;
+wire  [2:0] sz_idx; wire [31:0] sz_val; wire [7:0] pres_val, chg_set;
 wire        rl_we; wire [12:0] rl_waddr;
 
 reg         req_tog = 0;
-reg   [1:0] req_slot = 0;
+reg   [2:0] req_slot = 0;
 reg  [13:0] m_trk_addr = 0; reg m_trk_we = 0; reg [7:0] m_trk_din = 0; wire [7:0] m_trk_dout;
-wire        busy, err; wire [31:0] size_sel; wire [3:0] present, changed; reg [3:0] chg_clr = 0; wire scan_valid;
+wire        busy, err; wire [31:0] size_sel; wire [7:0] present, changed; reg [7:0] chg_clr = 0; wire scan_valid;
 
 reg [8:0] audio = 9'h010;
 
@@ -106,7 +106,7 @@ bvf_dataslot slots (.clk(clk), .reset(~run),
 bvf_regs regs (.clk(clk), .reset(1'b0), .addr(b_addr), .wr(b_wr), .wdata(b_wdata), .rd(b_rd), .rdata(b_rdata),
 	.run(run), .rst_pulse(rst_pulse), .turbo(turbo), .wp_all(wp_all), .keys(keys),
 	.io_hold(1'b0), .scan_valid(scan_valid), .req_pending(busy), .req_is_wr(1'b0), .req_err(err), .dbg(8'h5A),
-	.req_slot({30'd0, req_slot}), .req_offset(32'h0000_1200), .req_len(32'd1024), .req_boff(32'd0),
+	.req_slot({29'd0, req_slot}), .req_offset(32'h0000_1200), .req_len(32'd1024), .req_boff(32'd0),
 	.frame_cnt(frame_cnt), .frame_latest(frame_latest), .fb_addr(fb_addr), .fb_dout(fb_dout),
 	.aud_count(aud_count), .aud_head(aud_head), .aud_lost(aud_lost), .aud_pop(aud_pop), .aud_clr_lost(aud_clr_lost),
 	.trk_addr(trk_addr_h), .trk_we(trk_we_h), .trk_dout(h_dout_trk),
@@ -185,8 +185,23 @@ initial begin
 	check("scan_valid", scan_valid, 1);
 	check("changed", changed, 4'h1);
 	check("size_sel", size_sel, 32'd737280);
-	@(negedge clk); chg_clr = 4'h1; @(negedge clk); chg_clr = 0; repeat (3) @(posedge clk);
-	check("changed cleared", changed, 4'h0);
+	@(negedge clk); chg_clr = 8'h1; @(negedge clk); chg_clr = 0; repeat (3) @(posedge clk);
+	check("changed cleared", changed, 8'h0);
+
+	// the FreeHD images are the slots 6 and 7: their sizes are at 80 and 84, bits 6 and 7 of PRESENT / CHG_SET
+	axi_write(20'h00080, 32'd65792);     // SIZE_6
+	axi_write(20'h00084, 32'd1048832);   // SIZE_7
+	axi_write(20'h00070, 32'hC1);        // PRESENT
+	axi_write(20'h00074, 32'h80);        // CHG_SET
+	repeat (4) @(posedge clk);
+	req_slot = 3'd6; @(posedge clk); @(posedge clk); check("size_sel slot 6", size_sel, 32'd65792);
+	req_slot = 3'd7; @(posedge clk); @(posedge clk); check("size_sel slot 7", size_sel, 32'd1048832);
+	req_slot = 3'd0; @(posedge clk); @(posedge clk); check("size_sel slot 0 unchanged", size_sel, 32'd737280);
+	check("present with hard disks", present, 8'hC1);
+	check("changed slot 7", changed, 8'h80);
+	@(negedge clk); chg_clr = 8'h80; @(negedge clk); chg_clr = 0; repeat (3) @(posedge clk);
+	check("changed slot 7 cleared", changed, 8'h00);
+	axi_write(20'h00070, 32'h1);         // back to the floppy drive only
 
 	// the IO controller asks for a read: host fills the track RAM, the IO controller reads it back
 	@(posedge clk); req_tog <= 1; @(posedge clk); @(posedge clk);

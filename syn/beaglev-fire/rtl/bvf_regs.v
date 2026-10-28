@@ -22,7 +22,8 @@
 //   20 r  DEBUG   last debug byte of the IO controller
 //   40 r  REQ_SLOT   44 r REQ_OFFSET   48 r REQ_LEN   4C r REQ_BOFF     the disk request
 //   50 w  DONE    b0 = error; completes the request
-//   60 w  SIZE_n  (60 + 4n) size of the file in slot n   70 w PRESENT mask   74 w CHG_SET mask   78 w SCAN_VALID b0
+//   60 w  SIZE_n  (60 + 4n) size of the file in slot n (0-3 floppy drives)   70 w PRESENT mask (8 bits)
+//   74 w CHG_SET mask (8 bits)   78 w SCAN_VALID b0   80 w SIZE_6   84 w SIZE_7 (the two FreeHD hard disk images)
 //
 module bvf_regs (
 	input         clk,
@@ -65,11 +66,11 @@ module bvf_regs (
 	output reg        done_pulse,
 	output reg        done_err,
 	output reg        sz_we,
-	output reg  [1:0] sz_idx,
+	output reg  [2:0] sz_idx,
 	output reg [31:0] sz_val,
 	output reg        pres_we,
-	output reg  [3:0] pres_val,
-	output reg  [3:0] chg_set,
+	output reg  [7:0] pres_val,
+	output reg  [7:0] chg_set,
 	output reg        scan_we,
 	output reg        scan_val,
 
@@ -91,7 +92,7 @@ reg [31:0] reg_q;
 initial begin
 	run = 1'b0; turbo = 1'b0; wp_all = 1'b0; keys = 64'd0;
 	rst_pulse = 1'b0; aud_pop = 1'b0; aud_clr_lost = 1'b0; done_pulse = 1'b0; done_err = 1'b0;
-	sz_we = 1'b0; sz_idx = 2'd0; sz_val = 32'd0; pres_we = 1'b0; pres_val = 4'd0; chg_set = 4'd0;
+	sz_we = 1'b0; sz_idx = 3'd0; sz_val = 32'd0; pres_we = 1'b0; pres_val = 8'd0; chg_set = 8'd0;
 	scan_we = 1'b0; scan_val = 1'b0;
 end
 
@@ -103,7 +104,7 @@ always @(posedge clk) begin
 	sz_we        <= 1'b0;
 	pres_we      <= 1'b0;
 	scan_we      <= 1'b0;
-	chg_set      <= 4'd0;
+	chg_set      <= 8'd0;
 
 	if (reset) begin
 		run <= 1'b0; turbo <= 1'b0; wp_all <= 1'b0; keys <= 64'd0;
@@ -115,9 +116,10 @@ always @(posedge clk) begin
 		6'h06: aud_clr_lost <= wdata[0];
 		6'h07: aud_pop <= 1'b1;
 		6'h14: begin done_pulse <= 1'b1; done_err <= wdata[0]; end
-		6'h18, 6'h19, 6'h1A, 6'h1B: begin sz_we <= 1'b1; sz_idx <= addr[3:2]; sz_val <= wdata; end
-		6'h1C: begin pres_we <= 1'b1; pres_val <= wdata[3:0]; end
-		6'h1D: chg_set <= wdata[3:0];
+		6'h18, 6'h19, 6'h1A, 6'h1B: begin sz_we <= 1'b1; sz_idx <= {1'b0, addr[3:2]}; sz_val <= wdata; end
+		6'h20, 6'h21: begin sz_we <= 1'b1; sz_idx <= {2'b11, addr[2]}; sz_val <= wdata; end
+		6'h1C: begin pres_we <= 1'b1; pres_val <= wdata[7:0]; end
+		6'h1D: chg_set <= wdata[7:0];
 		6'h1E: begin scan_we <= 1'b1; scan_val <= wdata[0]; end
 		default: ;
 		endcase

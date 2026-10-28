@@ -38,7 +38,7 @@ begin
               fdc_sector => x"00", fdc_dam => '0', fdc_res_found => open, fdc_res_crc => open,
               fdc_res_dam => open, fdc_drive => "00", fdc_side => '0',
               fdc_ack => open, fdc_buff_addr => open, fdc_buff_dout => open, fdc_buff_wr => open,
-              fdc_buff_din => x"00", drv_ready => open, drv_wp => open);
+              fdc_buff_din => x"00", drv_ready => open, drv_wp => open, hd_svc => '0', hd_flags => open);
 
   ----------------------------------------------------------------------
   -- SD card (SPI mode 0, SDHC)

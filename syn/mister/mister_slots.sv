@@ -2,7 +2,8 @@
 //
 // The same job as syn/analogue/.../apf_dataslot.vhd, on the MiSTer's hps_io block interface: the four
 // DMK images are the hps_io virtual drives 0-3 (menu entries S0-S3, mounted by the HPS from the SD
-// card). The IO controller (io_ctrl_pocket, firmware/pocket) asks for up to a whole DMK track
+// card) and the two HDV images of the FreeHD controller are the virtual drives 4 and 5 (S4, S5); the
+// firmware sees them as the slots 6 and 7, like the Pocket. The IO controller (io_ctrl_pocket, firmware/pocket) asks for up to a whole DMK track
 // (16 KB, 32 blocks of 512 bytes) in one request; one hps_io command moves it:
 //
 //   read   the HPS writes the blocks to the track RAM (sd_buff_wr), starting at the request's boff
@@ -15,22 +16,22 @@ module mister_slots (
 	input             reset,                   // high = reset
 
 	// hps_io
-	input       [3:0] img_mounted,
+	input       [5:0] img_mounted,
 	input      [63:0] img_size,
-	output reg [31:0] sd_lba    [4],
-	output reg  [5:0] sd_blk_cnt[4],
-	output reg  [3:0] sd_rd,
-	output reg  [3:0] sd_wr,
-	input       [3:0] sd_ack,
+	output reg [31:0] sd_lba    [6],
+	output reg  [5:0] sd_blk_cnt[6],
+	output reg  [5:0] sd_rd,
+	output reg  [5:0] sd_wr,
+	input       [5:0] sd_ack,
 	input      [13:0] sd_buff_addr,
 	input       [7:0] sd_buff_dout,
 	input             sd_buff_wr,
-	output      [7:0] sd_buff_din   [4],
+	output      [7:0] sd_buff_din   [6],
 
 	// IO controller, see io_ctrl_pocket
 	input             req_tog,
 	input             req_wr,
-	input       [1:0] req_slot,
+	input       [2:0] req_slot,                // 0-3 floppy drives, 6 and 7 hard disks
 	input      [31:0] req_offset,
 	input      [15:0] req_len,                 // bytes (at most 16384)
 	input      [13:0] req_boff,                // where in the track RAM
@@ -41,36 +42,39 @@ module mister_slots (
 	input       [7:0] trk_din,
 	output      [7:0] trk_dout,
 	output     [31:0] size_sel,                // size of the file in the slot req_slot
-	output      [3:0] present,
-	output      [3:0] changed,
-	input       [3:0] chg_clr,
+	output      [7:0] present,
+	output      [7:0] changed,
+	input       [7:0] chg_clr,
 	output            scan_valid
 );
 
 // ---------------------------------------------------------------- mounted images
-reg  [31:0] size [4];
-reg   [3:0] cg = 4'd0;                         // toggles at every mount / unmount
-reg   [3:0] seen = 4'd0;
-reg   [3:0] pres = 4'd0;
+reg  [31:0] size [6];
+reg   [5:0] cg = 6'd0;                         // toggles at every mount / unmount
+reg   [5:0] seen = 6'd0;
+reg   [5:0] pres = 6'd0;
 integer i;
 
+// the firmware's slot number: 0-3 as they are, 6 and 7 are the virtual drives 4 and 5
+wire [2:0] req_vd = req_slot[2] ? req_slot - 3'd2 : req_slot;
+
 always @(posedge clk) begin
-	for (i = 0; i < 4; i = i + 1) begin
+	for (i = 0; i < 6; i = i + 1) begin
 		if (img_mounted[i]) begin
 			size[i] <= img_size[31:0];
 			pres[i] <= |img_size;
 			cg[i]   <= ~cg[i];
 		end
-		if (chg_clr[i]) seen[i] <= cg[i];
+		if (i < 4 ? chg_clr[i] : chg_clr[i + 2]) seen[i] <= cg[i];
 	end
 	if (reset) begin
-		seen <= 4'd0;
+		seen <= 6'd0;
 	end
 end
 
-assign size_sel = size[req_slot];
-assign present  = pres;
-assign changed  = cg ^ seen;
+assign size_sel = size[req_vd];
+assign present  = {pres[5:4], 2'b00, pres[3:0]};
+assign changed  = {cg[5:4] ^ seen[5:4], 2'b00, cg[3:0] ^ seen[3:0]};
 
 // The HPS mounts the images it remembers a little after the core starts: tell the firmware that the
 // table is complete only after that time, so a remembered disk is there before the CP-300 boots.
@@ -111,6 +115,8 @@ assign sd_buff_din[0] = a_q;
 assign sd_buff_din[1] = a_q;
 assign sd_buff_din[2] = a_q;
 assign sd_buff_din[3] = a_q;
+assign sd_buff_din[4] = a_q;
+assign sd_buff_din[5] = a_q;
 
 // ---------------------------------------------------------------- requests
 localparam S_IDLE = 3'd0, S_ISSUE = 3'd1, S_ACK = 3'd2, S_DONE = 3'd3;
@@ -119,25 +125,25 @@ reg  [2:0]  st = S_IDLE;
 reg         done_tog = 1'b0;
 reg         err_r = 1'b0;
 reg         wr_r;
-reg  [1:0]  slot_r;
+reg  [2:0]  slot_r;                            // the virtual drive
 reg  [25:0] tmo;
 
 assign busy = req_tog ^ done_tog;
 assign err  = err_r;
 
-wire [3:0] ack_sel = sd_ack & (4'b0001 << slot_r);
+wire [5:0] ack_sel = sd_ack & (6'b000001 << slot_r);
 
 always @(posedge clk) begin
 	if (reset) begin
-		st <= S_IDLE; sd_rd <= 4'd0; sd_wr <= 4'd0; done_tog <= req_tog; err_r <= 1'b0; rd_cmd <= 1'b0;
+		st <= S_IDLE; sd_rd <= 6'd0; sd_wr <= 6'd0; done_tog <= req_tog; err_r <= 1'b0; rd_cmd <= 1'b0;
 	end else begin
 		case (st)
 		S_IDLE: if (busy) begin
-			slot_r <= req_slot;
+			slot_r <= req_vd;
 			wr_r   <= req_wr;
 			boff_r <= req_boff;
 			rd_cmd <= ~req_wr;
-			for (i = 0; i < 4; i = i + 1) begin
+			for (i = 0; i < 6; i = i + 1) begin
 				sd_lba[i]     <= {9'd0, req_offset[31:9]};
 				sd_blk_cnt[i] <= 6'(((req_len + 16'd511) >> 9) - 16'd1);
 			end
@@ -147,17 +153,17 @@ always @(posedge clk) begin
 			end else st <= S_ISSUE;
 		end
 		S_ISSUE: begin
-			if (wr_r) sd_wr <= 4'b0001 << slot_r; else sd_rd <= 4'b0001 << slot_r;
+			if (wr_r) sd_wr <= 6'b000001 << slot_r; else sd_rd <= 6'b000001 << slot_r;
 			st <= S_ACK;
 		end
 		S_ACK: begin
 			tmo <= tmo + 26'd1;
 			if (|ack_sel) begin
-				sd_rd <= 4'd0; sd_wr <= 4'd0;
+				sd_rd <= 6'd0; sd_wr <= 6'd0;
 				st <= S_DONE;
 				tmo <= 26'd0;
 			end else if (&tmo) begin            // the HPS never answered (about 1.6 s)
-				sd_rd <= 4'd0; sd_wr <= 4'd0;
+				sd_rd <= 6'd0; sd_wr <= 6'd0;
 				err_r <= 1'b1; done_tog <= req_tog; rd_cmd <= 1'b0; st <= S_IDLE;
 			end
 		end

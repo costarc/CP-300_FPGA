@@ -20,6 +20,7 @@ add_file -type vhdl $root/syn/analogue/src/fpga/core/cp300_roms_stub.vhd
 add_file -type vhdl $root/rtl/cp300/cp300_rom.vhd
 add_file -type vhdl $root/rtl/kbd/matrix_kbd.vhd
 add_file -type vhdl $root/rtl/fdc/wd1793.vhd
+add_file -type vhdl $root/rtl/hdc/wd1010.vhd
 add_file -type vhdl $root/rtl/io/io_fw_pkg.vhd
 add_file -type vhdl $root/rtl/io/io_ctrl.vhd
 add_file -type vhdl $root/rtl/ht1080z/ht1080z.vhd

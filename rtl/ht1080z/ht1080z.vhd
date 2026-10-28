@@ -79,7 +79,9 @@ entity ht1080z is
        fdc_buff_wr : in  std_logic;
          fdc_drive : out std_logic_vector(1 downto 0);
           fdc_side : out std_logic;
-         drv_ready : in  std_logic_vector(3 downto 0);
+         hd_svc : out std_logic;                          -- the pending sector request is the hard disk's
+        hd_flags : in  std_logic_vector(3 downto 0);     -- b1:0 image mounted in hard disk 0/1, b3:2 write protected
+        drv_ready : in  std_logic_vector(3 downto 0);
             drv_wp : in  std_logic_vector(3 downto 0);
 
            ps2clk : in  STD_LOGIC;
@@ -175,7 +177,7 @@ signal dn_wr_new : std_logic;
 signal dn_addr_r : std_logic_vector(24 downto 0);
 signal dn_data_r : std_logic_vector(7 downto 0);
 
-signal res_cnt : std_logic_vector(5 downto 0) := "111111";
+signal res_cnt : std_logic_vector(10 downto 0) := (others => '1');   -- reset lasts 2047 clocks: the video RAM is cleared meanwhile
 signal autores : std_logic; 
 
 signal cpua     : std_logic_vector(15 downto 0); 
@@ -250,6 +252,14 @@ signal fdc_rdy, fdc_wp_i : std_logic;
 signal fdc_drv : std_logic_vector(1 downto 0);
 signal fdc_drv_on : std_logic;
 signal fdc_reset : std_logic;
+signal fdc_i_rd, fdc_i_wr, fdc_i_dam, fdc_i_ack, fdc_i_bwr : std_logic;
+signal fdc_i_track, fdc_i_trkreg, fdc_i_sector, fdc_i_bdin : std_logic_vector(7 downto 0);
+signal hdsel, hd_dev, hd_rd, hd_wr, hd_busy, hd_ack : std_logic;
+signal hd_dout, hd_bdin : std_logic_vector(7 downto 0);
+signal hd_cyl : std_logic_vector(9 downto 0);
+signal hd_head : std_logic_vector(2 downto 0);
+signal hd_sector : std_logic_vector(7 downto 0);
+signal hd_drive : std_logic_vector(1 downto 0);
 signal wait_cnt : std_logic_vector(21 downto 0) := (others => '0');
 signal cpuwait : std_logic;
 signal cpuwait_c : std_logic;   -- WAIT_n before the register stage used with EXT_RAM
@@ -292,7 +302,7 @@ begin
   fdc_drv    <= "00" when f4(0)='1' else "01" when f4(1)='1' else "10" when f4(2)='1' else "11";
   fdc_rdy    <= fdc_drv_on and drv_ready(conv_integer(fdc_drv));
   fdc_wp_i   <= drv_wp(conv_integer(fdc_drv));
-  fdc_drive  <= fdc_drv;
+  fdc_drive  <= hd_drive when hd_busy = '1' else fdc_drv;
   fdc_side   <= f4(4);
   fdc_reset  <= '1' when autores='0' or dn_go='1' else '0';
 
@@ -302,13 +312,42 @@ begin
       io_en => fdcsel, rd => not ior, wr => not iow, addr => cpua(1 downto 0),
       din => cpudo, dout => fdc_dout, drq => fdc_drq, intrq => fdc_intrq, busy => fdc_busy,
       drive => fdc_drv, side => f4(4), ready => fdc_rdy, wp => fdc_wp_i,
-      svc_rd => fdc_svc_rd, svc_wr => fdc_svc_wr, svc_ra => fdc_svc_ra,
-      svc_track => fdc_svc_track, svc_trkreg => fdc_svc_trkreg, svc_sector => fdc_svc_sector,
-      svc_dam => fdc_svc_dam, svc_ack => fdc_svc_ack,
+      svc_rd => fdc_i_rd, svc_wr => fdc_i_wr, svc_ra => fdc_svc_ra,
+      svc_track => fdc_i_track, svc_trkreg => fdc_i_trkreg, svc_sector => fdc_i_sector,
+      svc_dam => fdc_i_dam, svc_ack => fdc_i_ack,
       res_found => fdc_res_found, res_crc => fdc_res_crc, res_dam => fdc_res_dam,
-      svc_buff_addr => fdc_buff_addr, svc_buff_dout => fdc_buff_dout, svc_buff_din => fdc_buff_din,
+      svc_buff_addr => fdc_buff_addr, svc_buff_dout => fdc_buff_dout, svc_buff_din => fdc_i_bdin,
+      svc_buff_wr => fdc_i_bwr
+    );
+
+  -- FreeHD hard disk interface: ports C0-CF, answers only while an image is mounted (else FF, as
+  -- an empty expansion bus). It shares the IO controller's sector service with the floppy
+  -- controller: while hd_busy is up the request, its address and the buffer are the hard disk's.
+  hdsel  <= '1' when cpua(7 downto 4)="1100" else '0';
+  hd_dev <= hd_flags(0) or hd_flags(1);
+  hdc : entity work.wd1010
+    port map (
+      clk_sys => clk42m, ce => cpuClkEn, reset => fdc_reset,
+      io_en => hdsel, rd => not ior, wr => not iow, addr => cpua(3 downto 0),
+      din => cpudo, dout => hd_dout,
+      hd_ready => hd_flags(1 downto 0), hd_wp => hd_flags(3 downto 2),
+      svc_rd => hd_rd, svc_wr => hd_wr, svc_busy => hd_busy,
+      svc_cyl => hd_cyl, svc_head => hd_head, svc_sector => hd_sector, svc_drive => hd_drive,
+      svc_ack => hd_ack, res_found => fdc_res_found,
+      svc_buff_addr => fdc_buff_addr, svc_buff_dout => fdc_buff_dout, svc_buff_din => hd_bdin,
       svc_buff_wr => fdc_buff_wr
     );
+  hd_ack         <= fdc_svc_ack and hd_busy;
+  fdc_i_ack      <= fdc_svc_ack and not hd_busy;
+  fdc_i_bwr      <= fdc_buff_wr and not hd_busy;
+  fdc_svc_rd     <= fdc_i_rd or hd_rd;
+  fdc_svc_wr     <= fdc_i_wr or hd_wr;
+  fdc_svc_track  <= hd_cyl(7 downto 0) when hd_busy = '1' else fdc_i_track;
+  fdc_svc_trkreg <= "000" & hd_head & hd_cyl(9 downto 8) when hd_busy = '1' else fdc_i_trkreg;
+  fdc_svc_sector <= hd_sector when hd_busy = '1' else fdc_i_sector;
+  fdc_svc_dam    <= '0' when hd_busy = '1' else fdc_i_dam;
+  fdc_buff_din   <= hd_bdin when hd_busy = '1' else fdc_i_bdin;
+  hd_svc         <= hd_busy;
 
   -- wait states: a data register access (F3) holds the CPU until DRQ or INTRQ when F4 bit 6 is set.
   -- A 100 ms timeout releases a stuck CPU.
@@ -373,6 +412,7 @@ begin
 			  -- menu's reset to boot it.
 			  x"00" when ior='0' and cpua(7 downto 0)=x"f0" and fdc_drv="00" and fdc_rdy='0' else
 			  fdc_dout when ior='0' and fdcsel='1' else
+			  hd_dout when ior='0' and hdsel='1' and hd_dev='1' else
 				  -- Model III: E0 interrupt status (active low), E4 NMI status (bit 7 INTRQ,
 				  -- bit 6 motor timeout, active low), FF bit 7 cassette input
 				  not (intstat and intmask) when ior='0' and e0sel='1' else
@@ -522,12 +562,12 @@ begin
  process (clk42m, pllLocked)
  begin
    if pllLocked = '0' then
-		  res_cnt <= "000000";
+		  res_cnt <= (others => '0');
    elsif rising_edge(clk42m) then
 		if reset = '1' then
-		  res_cnt <= "000000";
+		  res_cnt <= (others => '0');
 		else
-		  if (res_cnt/="111111") then
+		  if (res_cnt/=(res_cnt'range => '1')) then
 			 res_cnt <= res_cnt+1;
 		  end if;
 		end if;
@@ -536,7 +576,7 @@ begin
  
  cpuClkEn <= '1' when clk42div = 0 or (turbo = '1' and clk42div = 10) else '0'; -- 42/21 = 2.0 MHz
  clkref <= '1' when clk42div = 0 or clk42div = 10 else '0'; -- ~4 MHz
- autores <= '1' when res_cnt="111111" else '0';   
+ autores <= '1' when res_cnt=(res_cnt'range => '1') else '0';   
 
 
  -- Model III I/O ports

@@ -48,7 +48,7 @@ Press **F12** on the PS/2 keyboard, or **SHIFT + BREAK** on the original keyboar
 | Enter | ENTER | select a menu item, or a file in the file list |
 | Esc | BREAK | back / close |
 
-The menu lists **Drive 0-3**, the **cassette** file (selection only, playback is not done yet), the **machine** (ROM file) and **Reset CP-300**. Choosing a drive shows the `*.DSK` files in `/CP300`; picking one mounts it at once, like swapping a floppy, and `(EJECT)` removes the disk. After mounting a boot disk in Drive 0, choose **Reset CP-300**.
+The menu lists **Drive 0-3**, the **cassette** file (selection only, playback is not done yet), the **machine** (ROM file), the two **FreeHD hard disks** (HD0, HD1: `*.HDV` images in `/CP300`, see [Hard disks](../../README.md#hard-disks-freehd)) and **Reset CP-300**. Choosing a drive shows the `*.DSK` files in `/CP300`; picking one mounts it at once, like swapping a floppy, and `(EJECT)` removes the disk. After mounting a boot disk in Drive 0, choose **Reset CP-300**.
 
 To keep the selection across power-offs, create a 512-byte file `/CP300/CP300.CFG` (any content, for example 512 zero bytes). The menu then saves the selected names in it.
 

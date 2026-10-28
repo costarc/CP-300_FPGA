@@ -32,14 +32,16 @@ architecture sim of tb_slot is
   signal fdc_buff_dout, fdc_buff_din : std_logic_vector(7 downto 0);
   signal fdc_buff_wr : std_logic;
   signal drv_ready, drv_wp : std_logic_vector(3 downto 0);
+  signal hd_svc : std_logic := '0';
+  signal hd_flags : std_logic_vector(3 downto 0);
 
   signal req_tog, req_wr, busy, err, trk_we, scan_valid : std_logic;
-  signal req_slot : std_logic_vector(1 downto 0);
+  signal req_slot : std_logic_vector(2 downto 0);
   signal req_offset, slot_size : std_logic_vector(31 downto 0);
   signal slot_len : std_logic_vector(15 downto 0);
   signal slot_boff, trk_addr : std_logic_vector(13 downto 0);
   signal trk_din, trk_dout : std_logic_vector(7 downto 0);
-  signal present, changed, chg_clr : std_logic_vector(3 downto 0);
+  signal present, changed, chg_clr : std_logic_vector(7 downto 0);
 
   -- bridge
   signal bridge_wr : std_logic := '0';
@@ -58,6 +60,11 @@ architecture sim of tb_slot is
   shared variable img : img_t := (others => x"FF");
   signal img_size : integer := 0;
   shared variable slot0_size : integer := 0;     -- what the size table says (0 = no file)
+  -- FreeHD: slot 6 holds an HDV image of 4 cylinders x 2 heads x 32 sectors, byte i of sector index x = 7 x + i
+  constant HD_SIZE : integer := 256 + 4 * 64 * 256;
+  type himg_t is array (0 to HD_SIZE - 1) of std_logic_vector(7 downto 0);
+  shared variable himg : himg_t := (others => x"00");
+  shared variable slot6_size : integer := 0;
   signal host_ops, host_writes, host_bytes : integer := 0;
 
   type buf_t is array (0 to 511) of std_logic_vector(7 downto 0);
@@ -81,7 +88,7 @@ begin
               fdc_res_found => fdc_res_found, fdc_res_crc => fdc_res_crc, fdc_res_dam => fdc_res_dam,
               fdc_drive => fdc_drive, fdc_side => '0', fdc_ack => fdc_ack,
               fdc_buff_addr => fdc_buff_addr, fdc_buff_dout => fdc_buff_dout, fdc_buff_wr => fdc_buff_wr,
-              fdc_buff_din => fdc_buff_din, drv_ready => drv_ready, drv_wp => drv_wp,
+              fdc_buff_din => fdc_buff_din, drv_ready => drv_ready, drv_wp => drv_wp, hd_svc => hd_svc, hd_flags => hd_flags,
               slot_req_tog => req_tog, slot_req_wr => req_wr, slot_num => req_slot, slot_offset => req_offset,
               slot_len => slot_len, slot_boff => slot_boff, slot_size => slot_size,
               slot_busy => busy, slot_err => err,
@@ -114,9 +121,11 @@ begin
     if rising_edge(clk74) then
       e := to_integer(unsigned(dt_addr(5 downto 1)));
       if dt_addr(0) = '0' then
-        dt_q <= x"00000000";                          -- slot id 0 in every entry (as an unused entry reads)
+        if e = 1 then dt_q <= x"00000006"; else dt_q <= x"00000000"; end if;   -- slot id 0 in the unused entries
       elsif e = 0 then
         dt_q <= std_logic_vector(to_unsigned(slot0_size, 32));
+      elsif e = 1 then
+        dt_q <= std_logic_vector(to_unsigned(slot6_size, 32));
       else
         dt_q <= x"00000000";
       end if;
@@ -132,7 +141,25 @@ begin
     variable c : character;
     variable n, off, w, nbytes : integer;
     variable word : std_logic_vector(31 downto 0);
+    variable hs : boolean;
+
+    impure function rdb(i : integer) return std_logic_vector is
+    begin
+      if hs then return himg(i); else return img(i); end if;
+    end function;
+    procedure wrb(i : integer; v : std_logic_vector(7 downto 0)) is
+    begin
+      if hs then himg(i) := v; else img(i) := v; end if;
+    end procedure;
   begin
+    -- the hard disk image: header 56 CB 10, 4 cylinders, 64 sectors per cylinder
+    himg(0) := x"56"; himg(1) := x"CB"; himg(2) := x"10"; himg(28) := x"04"; himg(29) := x"40";
+    for x in 0 to 4 * 64 - 1 loop
+      for i in 0 to 255 loop
+        himg(256 + 256 * x + i) := std_logic_vector(to_unsigned((7 * x + i) mod 256, 8));
+      end loop;
+    end loop;
+    slot6_size := HD_SIZE;
     -- load the disk image
     file_open(f, "disk.dmk", read_mode);
     n := 0;
@@ -148,6 +175,7 @@ begin
       wait until rising_edge(clk74) and (t_read = '1' or t_write = '1');
       host_ops <= host_ops + 1;
       off := to_integer(unsigned(t_off));
+      hs := (t_id = x"0006");
       -- the command is taken: done and err are cleared, ack rises when the host starts to work
       for i in 1 to 4 loop wait until rising_edge(clk74); end loop;
       t_done <= '0'; t_err <= "000";
@@ -156,13 +184,14 @@ begin
       for i in 1 to 100 loop wait until rising_edge(clk74); end loop;     -- the host's latency
       nbytes := to_integer(unsigned(t_len));
       assert nbytes > 0 and nbytes <= 16384 report "bad length" severity failure;
-      assert off + nbytes <= img_size report "transfer past the end of the file" severity failure;
+      assert off + nbytes <= img_size or hs report "transfer past the end of the file" severity failure;
+      assert off + nbytes <= HD_SIZE or not hs report "transfer past the end of the hard disk" severity failure;
       host_bytes <= host_bytes + nbytes;
       if t_read = '1' or (t_baddr(31 downto 28) = x"2") then
         -- host writes the bytes into the core (the track RAM), one word per ~75 clocks
         assert t_baddr(31 downto 14) = x"2000" & "00" report "read: bad bridge address" severity failure;
         for k in 0 to (nbytes + 3) / 4 - 1 loop
-          word := img(off + 4*k) & img(off + 4*k + 1) & img(off + 4*k + 2) & img(off + 4*k + 3);
+          word := rdb(off + 4*k) & rdb(off + 4*k + 1) & rdb(off + 4*k + 2) & rdb(off + 4*k + 3);
           bridge_addr <= std_logic_vector(unsigned(t_baddr) + to_unsigned(4*k, 32));
           bridge_wr_data <= word;
           bridge_wr <= '1';
@@ -178,10 +207,10 @@ begin
           bridge_addr <= std_logic_vector(unsigned(t_baddr) + to_unsigned(4*k, 32));
           for i in 1 to 4 loop wait until rising_edge(clk74); end loop;
           word := tx_rd_data;
-          img(off + 4*k)     := word(31 downto 24);
-          if 4*k + 1 < nbytes then img(off + 4*k + 1) := word(23 downto 16); end if;
-          if 4*k + 2 < nbytes then img(off + 4*k + 2) := word(15 downto 8); end if;
-          if 4*k + 3 < nbytes then img(off + 4*k + 3) := word(7 downto 0); end if;
+          wrb(off + 4*k, word(31 downto 24));
+          if 4*k + 1 < nbytes then wrb(off + 4*k + 1, word(23 downto 16)); end if;
+          if 4*k + 2 < nbytes then wrb(off + 4*k + 2, word(15 downto 8)); end if;
+          if 4*k + 3 < nbytes then wrb(off + 4*k + 3, word(7 downto 0)); end if;
         end loop;
       end if;
       wait until rising_edge(clk74);
@@ -217,7 +246,7 @@ begin
   ----------------------------------------------------------------------
   test : process
     variable found, crc : std_logic;
-    variable ops0, wr0 : integer;
+    variable ops0, wr0, n, w : integer;
 
     procedure check(cond : boolean; msg : string) is
     begin
@@ -322,6 +351,68 @@ begin
     wait until drv_ready(0) = '1' for 5 ms;
     check(drv_ready(0) = '1', "drive 0 not ready after the file came back");
     read_check(2, 3);                                          -- after the remount
+
+    -- FreeHD: the firmware mounted the image of slot 6 as hard disk 0 (flags: b0 mounted)
+    check(hd_flags(0) = '1' and hd_flags(1) = '0', "hard disk 0 not mounted / hard disk 1 mounted without a file");
+    for t in 0 to 2 loop
+      -- cylinder 1 head 1 sector 5 (index 101, odd) and sector 4 (index 100, even), then cylinder 3 head 0 sector 31
+      hd_svc <= '1';
+      fdc_drive <= "00";
+      if t = 0 then
+        fdc_track <= x"01"; fdc_trkreg <= "00000100"; fdc_sector <= x"05"; w := 101;
+      elsif t = 1 then
+        fdc_track <= x"01"; fdc_trkreg <= "00000100"; fdc_sector <= x"04"; w := 100;
+      else
+        fdc_track <= x"03"; fdc_trkreg <= "00000000"; fdc_sector <= x"1F"; w := 3 * 64 + 31;
+      end if;
+      fdc_rd <= '1';
+      wait until rising_edge(clk) and fdc_ack = '1';
+      for i in 1 to 6 loop wait until rising_edge(clk); end loop;
+      fdc_rd <= '0';
+      wait until rising_edge(clk) and fdc_ack = '0';
+      hd_svc <= '0';
+      found := fdc_res_found;
+      wait until rising_edge(clk);
+      check(found = '1', "hard disk sector " & integer'image(t) & " not found");
+      n := 0;
+      for i in 0 to 255 loop
+        if fbuf(i) /= std_logic_vector(to_unsigned((7 * w + i) mod 256, 8)) then n := n + 1; end if;
+      end loop;
+      check(n = 0, "hard disk sector " & integer'image(t) & ": " & integer'image(n) & " bytes differ");
+      report "hard disk read " & integer'image(t) & " ok=" & boolean'image(n = 0 and found = '1');
+    end loop;
+    -- a sector outside the image is not found
+    hd_svc <= '1'; fdc_track <= x"09"; fdc_trkreg <= "00000000"; fdc_sector <= x"00"; fdc_rd <= '1';
+    wait until rising_edge(clk) and fdc_ack = '1';
+    for i in 1 to 6 loop wait until rising_edge(clk); end loop;
+    fdc_rd <= '0';
+    wait until rising_edge(clk) and fdc_ack = '0';
+    hd_svc <= '0';
+    check(fdc_res_found = '0', "cylinder 9 should not exist");
+    wait until rising_edge(clk);
+    -- write cylinder 1 head 1 sector 5 (odd: the second half of a 512 byte block) and sector 4 (even)
+    for t in 0 to 1 loop
+      for i in 0 to 255 loop fbuf(i) := std_logic_vector(to_unsigned((255 - i + t) mod 256, 8)); end loop;
+      wait until rising_edge(clk);
+      hd_svc <= '1'; fdc_track <= x"01"; fdc_trkreg <= "00000100"; fdc_sector <= std_logic_vector(to_unsigned(5 - t, 8));
+      fdc_wr <= '1';
+      wait until rising_edge(clk) and fdc_ack = '1';
+      for i in 1 to 6 loop wait until rising_edge(clk); end loop;
+      fdc_wr <= '0';
+      wait until rising_edge(clk) and fdc_ack = '0';
+      hd_svc <= '0';
+      check(fdc_res_found = '1', "hard disk write " & integer'image(t));
+      wait until rising_edge(clk);
+    end loop;
+    n := 0;
+    for i in 0 to 255 loop
+      if himg(256 + 256 * 101 + i) /= std_logic_vector(to_unsigned((255 - i) mod 256, 8)) then n := n + 1; end if;
+      if himg(256 + 256 * 100 + i) /= std_logic_vector(to_unsigned((256 - i) mod 256, 8)) then n := n + 1; end if;
+      if himg(256 + 256 * 102 + i) /= std_logic_vector(to_unsigned((7 * 102 + i) mod 256, 8)) then n := n + 1; end if;
+      if himg(256 + 256 * 99 + i) /= std_logic_vector(to_unsigned((7 * 99 + i) mod 256, 8)) then n := n + 1; end if;
+    end loop;
+    check(n = 0, "hard disk image after the writes: " & integer'image(n) & " bytes wrong (a neighbour sector damaged?)");
+    report "hard disk write ok=" & boolean'image(n = 0);
     report "host ops: " & integer'image(host_ops) & ", bytes: " & integer'image(host_bytes);
 
     if fails = 0 then
