@@ -348,6 +348,7 @@ reg        set_sound   = 1'b1;
 reg  [1:0] set_vol     = 2'd2;
 reg        set_wp      = 1'b0;      // write protect all disks
 reg        set_padkeys = 1'b1;      // d-pad and buttons are keys while the keyboard is closed
+reg        set_eject   = 1'b0;      // all disks ejected (the CP-300 boots to Cass?)
 reg        reset_tog   = 1'b0;      // "Reset CP-300" action
 
 wire [7:0] io_dbg;
@@ -364,6 +365,7 @@ always @(posedge clk_74a) begin
         6'd4: set_wp      <= bridge_wr_data[0];
         6'd5: set_padkeys <= bridge_wr_data[0];
         6'd6: reset_tog   <= ~reset_tog;
+        6'd7: set_eject   <= bridge_wr_data[0];
         default: ;
         endcase
     end
@@ -377,6 +379,7 @@ always @(*) begin
     6'd3:    settings_rd = {30'd0, set_vol};
     6'd4:    settings_rd = {31'd0, set_wp};
     6'd5:    settings_rd = {31'd0, set_padkeys};
+    6'd7:    settings_rd = {31'd0, set_eject};
     6'd9:    settings_rd = {24'd0, io_dbg_s};         // IO controller status (read only)
     default: settings_rd = 32'h0;
     endcase
@@ -571,7 +574,7 @@ wire        rst_rise, rst_fall;
 wire        reset_pulse = rst_rise | rst_fall;
 wire [2:0]  vol42;
 wire [1:0]  phos42;
-wire        turbo42, sound42, padkeys42, wp42;
+wire        turbo42, sound42, padkeys42, wp42, eject42;
 synch_3 #(.WIDTH(1)) s_rst (.i(reset_tog),   .o(),           .clk(clk42), .rise(rst_rise), .fall(rst_fall));
 synch_3 #(.WIDTH(2)) s_vol (.i(set_vol),     .o(vol42[1:0]), .clk(clk42), .rise(), .fall());
 synch_3 #(.WIDTH(2)) s_phs (.i(set_phos),    .o(phos42),     .clk(clk42), .rise(), .fall());
@@ -579,6 +582,7 @@ synch_3 #(.WIDTH(1)) s_trb (.i(set_turbo),   .o(turbo42),    .clk(clk42), .rise(
 synch_3 #(.WIDTH(1)) s_snd (.i(set_sound),   .o(sound42),    .clk(clk42), .rise(), .fall());
 synch_3 #(.WIDTH(1)) s_pdk (.i(set_padkeys), .o(padkeys42),  .clk(clk42), .rise(), .fall());
 synch_3 #(.WIDTH(1)) s_wp  (.i(set_wp),      .o(wp42),       .clk(clk42), .rise(), .fall());
+synch_3 #(.WIDTH(1)) s_ejc (.i(set_eject),   .o(eject42),     .clk(clk42), .rise(), .fall());
 assign vol42[2] = 1'b0;
 
 // "Reset CP-300" from the Core Settings menu: the core is held in reset for 1 ms
@@ -789,7 +793,8 @@ io_ctrl_pocket io_ctrl (
     .slot_changed(slot_changed),
     .slot_chg_clr(slot_chg_clr),
     .scan_valid(scan_valid),
-    .opt_wp(wp42)
+    .opt_wp(wp42),
+    .opt_eject(eject42)
 );
 
 apf_dataslot slots (

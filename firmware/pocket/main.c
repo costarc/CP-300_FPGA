@@ -18,7 +18,9 @@ static uint8_t sector[512];
 
 static dmk_t drive[NDRIVES];
 static uint8_t drive_ok[NDRIVES];
-static uint8_t wp_shown;                 /* the "write protect all" option the drive flags were built with */
+static uint8_t wp_shown;
+static uint8_t eject_shown;              /* the "eject all disks" option the drives were mounted with */
+static uint8_t ejected;                 /* the "write protect all" option the drive flags were built with */
 
 /* tell the floppy controller what is in drive d */
 static void set_flags(uint8_t d)
@@ -40,7 +42,7 @@ static void mount_drive(uint8_t d)
 	e.slot = d;
 	drive_ok[d] = 0;
 	dmk_forget(&drive[d]);
-	if ((SLOT_PRES >> d) & 1)
+	if (!ejected && ((SLOT_PRES >> d) & 1))
 		drive_ok[d] = dmk_open(&drive[d], &e);
 	set_flags(d);
 }
@@ -107,6 +109,7 @@ void main(void)
 	for (d = 0; d < NDRIVES; d++)
 		mount_drive(d);
 	SLOT_CHG = 0x0F;
+	eject_shown = SLOT_OPT & OPT_EJECT;
 	wp_shown = SLOT_OPT & OPT_WP;
 	show_status();
 	CTRL = 0;                    /* release the CP-300, it has been held in reset since power-on */
@@ -119,6 +122,14 @@ void main(void)
 					SLOT_CHG = 1 << d;
 					mount_drive(d);
 				}
+			show_status();
+		}
+		opt = SLOT_OPT & OPT_EJECT;
+		if (opt != eject_shown) {
+			eject_shown = opt;
+			ejected = opt != 0;
+			for (d = 0; d < NDRIVES; d++)
+				mount_drive(d);
 			show_status();
 		}
 		opt = SLOT_OPT & OPT_WP;

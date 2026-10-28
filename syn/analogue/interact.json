@@ -80,6 +80,16 @@
                 "value": 1
             },
             {
+                "name": "Eject all disks",
+                "id": 9,
+                "type": "check",
+                "enabled": true,
+                "persist": false,
+                "address": "0x4000001C",
+                "defaultval": 0,
+                "value": 1
+            },
+            {
                 "name": "Disk status",
                 "id": 8,
                 "type": "number_u32",

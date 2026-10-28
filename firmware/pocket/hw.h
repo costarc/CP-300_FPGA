@@ -32,9 +32,10 @@ __sfr __at(0x32) SLOT_SIZE2;
 __sfr __at(0x33) SLOT_SIZE3;
 __sfr __at(0x29) SLOT_PRES;   /* r: b3:0 slot has a file */
 __sfr __at(0x2A) SLOT_CHG;    /* r: b3:0 file replaced;  w: clear those bits */
-__sfr __at(0x2B) SLOT_OPT;    /* r: b0 write protect all disks, b7 slot table scanned */
+__sfr __at(0x2B) SLOT_OPT;    /* r: b0 write protect all disks, b2 eject all disks, b7 slot table scanned */
 
 #define OPT_WP        0x01
+#define OPT_EJECT     0x04
 #define OPT_SCANNED   0x80
 #define CTRL_RESET    0x02
 

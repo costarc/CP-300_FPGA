@@ -22,7 +22,7 @@ The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F
 4. To boot a disk: Analogue button, **Core Settings**, **Drive 0 (boot)**, pick the file, then **Reset CP-300**. The Pocket remembers the choice for the next start.
 5. At `TRSDOS Ready` (TRSDOS 1.3) type `BASIC`, press ENTER at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` for a file on Drive 1).
 
-**Disks.** The four drives are data slots, shown in the **Core Settings** menu as *Drive 0 (boot)* to *Drive 3*: pick a `.dsk` or `.dmk` file (DMK format; `tools/dsk2dmk.py` in the repository root converts JV1/JV3/HFE) and choose **Reset CP-300**, and the ROM boots it. With no disk in Drive 0 the ROM goes to `Cass?`. The Pocket remembers the file you picked and loads the same one at the next start; the core is held in reset until the slots have been read, so a remembered disk is there when the ROM first looks. A file chosen while the core runs swaps the floppy like a real drive. Changes the DOS makes to a disk are written back to the file on the SD card (turn on *Write protect disks* to prevent that).
+**Disks.** The four drives are data slots, shown in the **Core Settings** menu as *Drive 0 (boot)* to *Drive 3*: pick a `.dsk` or `.dmk` file (DMK format; `tools/dsk2dmk.py` in the repository root converts JV1/JV3/HFE) and choose **Reset CP-300**, and the ROM boots it. With no disk in Drive 0 the ROM goes to `Cass?`; the Pocket remembers the file in a slot, so to get back to `Cass?` turn on *Eject all disks* and choose **Reset CP-300**. The Pocket remembers the file you picked and loads the same one at the next start; the core is held in reset until the slots have been read, so a remembered disk is there when the ROM first looks. A file chosen while the core runs swaps the floppy like a real drive. Changes the DOS makes to a disk are written back to the file on the SD card (turn on *Write protect disks* to prevent that).
 
 **On-screen keyboard.** *Select* opens it over the lower 128 lines of the picture (the CP-300 keeps running above it) and closes it.
 
@@ -49,6 +49,7 @@ The keyboard is the CP-300's own 8 x 8 matrix (the table in the repository READM
 | Volume | Low / Medium / High / Max | |
 | Buttons are keys | on / off | d-pad and buttons type keys while the keyboard is hidden |
 | Write protect disks | on / off | the DOS cannot change the disk files |
+| Eject all disks | on / off | all four drives read as empty, so the ROM boots to `Cass?`; not remembered, off at every start |
 | Reset CP-300 | action | reset the machine (needed after choosing a new boot disk) |
 | Disk status | read only, hex | bit 7 = IO controller running, bits 3:0 = drives holding a usable DMK |
 

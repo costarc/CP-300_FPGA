@@ -88,7 +88,8 @@ entity io_ctrl_pocket is
     slot_changed : in  std_logic_vector(3 downto 0);
     slot_chg_clr : out std_logic_vector(3 downto 0);
     scan_valid   : in  std_logic;
-    opt_wp       : in  std_logic
+    opt_wp       : in  std_logic;
+    opt_eject    : in  std_logic := '0'
   );
 end io_ctrl_pocket;
 
@@ -331,7 +332,7 @@ begin
         size_r(31 downto 24) when port_a = x"33" else
         "0000" & slot_present when port_a = x"29" else
         "0000" & slot_changed when port_a = x"2A" else
-        scan_valid & "000000" & opt_wp when port_a = x"2B" else
+        scan_valid & "00000" & opt_eject & "0" & opt_wp when port_a = x"2B" else
         x"00";
 
 end rtl;
