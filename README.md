@@ -65,14 +65,15 @@ To keep the selection across power-offs, create a 512-byte file `/CP300/CP300.CF
 
 ### Machines
 
-The machine is the system ROM, a file in `/CP300` with the extension `.ROM` (16 KB, or 14 KB for a plain Model III ROM), plus the character generator `CHARGEN.BIN` (2 KB, the same on the CP-300 and CP-500). They are read from the SD card into the core while it is held in reset, at power-on and at **Reset CP-300**. The menu item **MACHINE** lists the `*.ROM` files; picking one is saved in `CP300.CFG` and takes effect at the next reset. `(DEFAULT)` uses `CP300.ROM`, or else the first `.ROM` in the folder. Without a ROM the CP-300 stays in reset and the menu says why.
+The machine is the system ROM, a file in `/CP300` with the extension `.ROM` (16 KB, or 14 KB for a plain Model III ROM), plus its character generator (2 KB): the file with the same name and the extension `.CHR` (`CP500.ROM` loads `CP500.CHR`), or `CHARGEN.BIN` when there is none, so machines that share a character set need only one. They are read from the SD card into the core while it is held in reset, at power-on and at **Reset CP-300**. The menu item **MACHINE** lists the `*.ROM` files; picking one is saved in `CP300.CFG` and takes effect at the next reset. `(DEFAULT)` uses `CP300.ROM`, or else the first `.ROM` in the folder. Without a ROM the CP-300 stays in reset and the menu says why.
 
 | File on the SD card | Source |
 |---|---|
 | `CP300.ROM` | `27C128cp300.BIN` (CP-300) |
 | `CP500.ROM` | `cp500.rom` (CP-500, M80) |
 | `CP500P24.ROM` | `27c128.BIN` of the CP-500 P24 / Turbo set (same file) |
-| `CHARGEN.BIN` | `2716cp300.BIN` (also the CP-500 2716) |
+| `CHARGEN.BIN` | `2716cp300.BIN` (also the CP-500 2716): the shared character generator |
+| `NAME.CHR` | optional: the character generator of `NAME.ROM`, when it differs |
 
 The BASIC ROM (0000-37FF) of the CP-300 and the CP-500 is the same code (the CP-500 P24 differs by two bytes at 01E1); the CP-500 differences are in the upper 2 KB, which the CPU cannot reach at 3800-3FFF. A genuine TRS-80 Model III ROM (14 KB, for example one built from [kiwisincebirth/TRS-80-ROMS](https://github.com/kiwisincebirth/TRS-80-ROMS)) uses the same hardware and should run as a `.ROM` file. The CP-500 M80's 80-column video board is not modelled.
 

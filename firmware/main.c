@@ -64,6 +64,7 @@ static uint8_t browse_target;        /* 0-3 drive, 4 cassette, 5 machine */
 static uint8_t rom_ok;
 static uint8_t rom_err;              /* 1 no ROM file, 2 SD read error, 3 no CHARGEN.BIN, 4 ROM too small */
 static char rom_name[11];
+static char chr_name[11];
 static char list[MAXLIST][11];
 static uint8_t nlist;
 static uint8_t cursor;
@@ -358,6 +359,9 @@ static void rom_load(void)
 
 	rom_ok = 0;
 	rom_err = 0;
+	chr_name[8] = 'C';
+	chr_name[9] = 'H';
+	chr_name[10] = 'R';
 	for (k = 0; k < 11; k++)
 		rom_name[k] = ' ';
 	if (!have_dir || !find_rom(&e))
@@ -369,7 +373,10 @@ static void rom_load(void)
 	else {
 		for (k = 0; k < 11; k++)
 			rom_name[k] = e.name[k];
-		if (!dir_find(cp300_dir, name_chargen, &e) || e.size < 2048)
+		/* the machine's own character generator NAME.CHR, else the shared CHARGEN.BIN */
+		for (k = 0; k < 8; k++)
+			chr_name[k] = rom_name[k];
+		if ((!dir_find(cp300_dir, chr_name, &e) && !dir_find(cp300_dir, name_chargen, &e)) || e.size < 2048)
 			rom_err = 3;
 		else if (rom_push(&e, 1, 2048))
 			rom_err = 2;
@@ -442,7 +449,7 @@ static void draw_main(void)
 		put(14, 1, "NO /CP300 DIRECTORY");
 	} else if (rom_err) {
 		put(14, 1, rom_err == 1 ? "NO .ROM FILE IN /CP300" :
-		           rom_err == 3 ? "NO CHARGEN.BIN" :
+		           rom_err == 3 ? "NO CHARGEN FILE" :
 		           rom_err == 4 ? "ROM FILE TOO SMALL" : "ROM READ ERROR");
 	}
 	put(15, 1, "ENTER SELECT  ESC CLOSE");
