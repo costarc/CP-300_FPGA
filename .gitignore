@@ -47,3 +47,12 @@ syn/mister/build_id.v
 syn/mister/jtag.cdf
 syn/mister/serv_req_info.txt
 syn/mister/*_assignment_defaults.qdf
+
+# Scans of the original Prologica schematic and the redrawn copies: kept locally, not published
+cp300 original.pdf
+cp300 limpo v02.tif
+docs/schematic/
+
+# Python
+__pycache__/
+*.pyc

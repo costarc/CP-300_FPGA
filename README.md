@@ -1,10 +1,37 @@
 # CP-300 FPGA
 
-An FPGA recreation of the **Prológica CP-300**, the Brazilian TRS-80 Model III compatible computer (1983), for the **Terasic DE0** board (Cyclone III EP3C16F484C6).
+An FPGA recreation of the **Prológica CP-300**, the Brazilian TRS-80 Model III compatible computer (1983).
 
-It runs the original CP-300 ROM and boots TRS-80 Model III disk operating systems (TRSDOS 1.3, LDOS, NEWDOS/80, DOS-500 and others) from disk images on an **SD card**, with an on-screen menu to mount and swap the images. VGA output, PS/2 keyboard.
+It runs the original CP-300 ROM and boots TRS-80 Model III disk operating systems (TRSDOS 1.3, LDOS, NEWDOS/80, DOS-500 and others)
+from **DMK** disk images. The same core runs on the Terasic DE0, the Analogue Pocket, the BeagleV-Fire (in a web browser), the MiSTer
+and the Sipeed Tang Nano 9K / 20K.
 
-Other boards: Sipeed Tang Nano 9K / 20K (`syn/tangnano9k`, `syn/tangnano20k`, HDMI) and the **Analogue Pocket** (`syn/analogue`, on-screen keyboard and audio, [not yet compiled](syn/analogue/README.md)).
+## Ports
+
+One core, several boards. Each port folder has its own README with the wiring, the build and the status.
+
+| Board | Folder | Screen, keyboard, disks | Status |
+|---|---|---|---|
+| **Terasic DE0** (Cyclone III) | [`syn/de0`](syn/de0/README.md) | VGA, PS/2 and the original CP-300 keyboard, SD card, on-screen menu | **Works** (tested on a board) |
+| **Analogue Pocket** (Cyclone V) | [`syn/analogue`](syn/analogue/README.md) | the Pocket's screen, on-screen keyboard, audio, disks from the Core Settings menu | **Works** on a Pocket. The newest SD-card speed changes are not yet re-tested on hardware |
+| **BeagleV-Fire** (PolarFire SoC, RISC-V Linux) | [`syn/beaglev-fire`](syn/beaglev-fire/README.md) | **in a web browser**: screen, keyboard, sound, four disk drives | **Works** on the author's board. Installable [package](syn/beaglev-fire/releases) with an installer |
+| **MiSTer** (DE10-Nano) | [`syn/mister`](syn/mister/README.md) | the MiSTer framework (HDMI/VGA), USB keyboard, SD card, OSD | Compiles. Never run on a MiSTer |
+| **Sipeed Tang Nano 9K** and **20K** (Gowin) | [`syn/tangnano9k`](syn/tangnano9k/README.md), [`syn/tangnano20k`](syn/tangnano20k/README.md) | HDMI (640x480), SD card, on-screen menu; the 20K build is limited to what a 9K has | Synthesises and meets timing in the Gowin tools, the frame buffer path passes its simulation. Not tried on a board |
+
+"Works" means the ROM boots and a DOS boots from a disk image on the real board, checked by the author. The other ports are
+code that has not met its hardware yet: expect to find problems.
+
+### BeagleV-Fire in short
+
+The BeagleV-Fire has no video output, so the **browser is the monitor, keyboard, speaker and disk drive**: the CP-300 runs in the
+FPGA fabric, a small Python daemon on the board's Linux serves a web page. `syn/beaglev-fire/releases/` holds the installable
+package (`cp300-beaglev-fire-<version>.tar.gz`): `sudo ./install.sh` installs the software, adds the CP-300 to the board's web
+server and to Cockpit, and flashes the gateware. **Flashing rewrites the board's bootloader and can leave the board unable to
+start: read the disclaimer in the package and in the [port README](syn/beaglev-fire/README.md) first.**
+
+## The machine
+
+The figures are those of the DE0 build; the other ports differ in video, input and disks.
 
 | | |
 |---|---|
@@ -16,52 +43,9 @@ Other boards: Sipeed Tang Nano 9K / 20K (`syn/tangnano9k`, `syn/tangnano20k`, HD
 
 There was no existing Model III or CP-300 core, so this starts from the HT1080Z core ([mist-devel/ht1080z](https://github.com/mist-devel/ht1080z), a TRS-80 Model I for MiST) and converts it step by step. [docs/design-notes.md](docs/design-notes.md) has the reasoning and the Model III changes.
 
-## Status
+## ROMs, machines and disk images
 
-Works on a DE0: the ROM boots, the menu shows on the VGA picture, and TRSDOS 1.3 boots from a disk image on the SD card.
-
-| Part | State |
-|---|---|
-| CP-300 ROM, video, PS/2 keyboard | done |
-| Model III I/O: ports E0/E4/EC/FF, 30 Hz interrupt, NMI, 2.0 MHz | done |
-| SD card, on-screen menu, disk mounting | done |
-| Floppy controller WD1793, DMK images, read and write | done (no formatting: READ/WRITE TRACK) |
-| Cassette (`.CAS` files from the SD card, record) | not started |
-| Hard disk (FreHD-compatible WD1010 at C8-CF) | not started |
-| Original CP-300 keyboard matrix on the GPIO header (3.3 V) | done in the design and in simulation, SHIFT + BREAK opens the menu; [not yet tested on a real keyboard](#original-cp-300-keyboard) |
-| Sound | none (the HT1080Z sound chip was removed; only the tape port speaker bit remains) |
-
-Resources: 7,359 of 15,408 logic elements (48%), 430,208 of 516,096 memory bits (83%), timing met at 42 MHz.
-
-## Quick start
-
-1. **ROMs.** The ROMs are not in the FPGA image: every board loads them from the SD card. Put a system ROM (`CP300.ROM`, `CP500.ROM`, `CP500P24.ROM`, `TRS80M3.ROM`) and `CHARGEN.BIN` in `/CP300` on the card ([Machines](#machines)). They are copyrighted and not part of this repository.
-2. **Build** the FPGA image ([Building](#building-from-the-command-line)) or use a prebuilt `cp300_de0.sof` / `cp300_de0.pof`.
-3. **Program the DE0:**
-   - `cp300_de0.sof`: Quartus Programmer, mode JTAG. Lost at power-off. RUN/PROG switch on RUN.
-   - `cp300_de0.pof`: Programmer mode "Active Serial Programming" into the EPCS4 flash, so the design loads at every power-on. RUN/PROG switch on PROG while programming, then back to RUN and power-cycle.
-4. **SD card.** Format it FAT16 or FAT32. Create a folder `CP300` and copy disk images into it ([Disk images](#disk-images)). Optionally add a `CP300.CFG` of 512 bytes to remember the mounted disks.
-5. **Connect** a VGA monitor and a PS/2 keyboard, put the card in the DE0 slot and power on.
-
-The CP-300 stays in reset while the card is read, so the disks listed in `CP300.CFG` are mounted before the ROM boots. With no disk in Drive 0 the ROM goes to `Cass?` (cassette BASIC). With a bootable disk in Drive 0, the DOS starts.
-
-## Using it
-
-### On-screen menu
-
-Press **F12** on the PS/2 keyboard, or **SHIFT + BREAK** on the original keyboard, to open or close the menu. While it is open both keyboards go to the menu, not to the CP-300. The CP-300 ROM treats SHIFT + BREAK as a plain BREAK, so nothing is lost; the BREAK of that chord is not passed on to the CP-300.
-
-| PS/2 key | Original CP-300 key | Action |
-|---|---|---|
-| F12 | **SHIFT + BREAK** (either shift) | open or close the menu |
-| Up / Down | UP / DOWN | move |
-| PgUp / PgDn | LEFT / RIGHT | page through the file list |
-| Enter | ENTER | select a menu item, or a file in the file list |
-| Esc | BREAK | back / close |
-
-The menu lists **Drive 0-3**, the **cassette** file (selection only, playback is not done yet), the **machine** (ROM file) and **Reset CP-300**. Choosing a drive shows the `*.DSK` files in `/CP300`; picking one mounts it at once, like swapping a floppy, and `(EJECT)` removes the disk. After mounting a boot disk in Drive 0, choose **Reset CP-300**.
-
-To keep the selection across power-offs, create a 512-byte file `/CP300/CP300.CFG` (any content, for example 512 zero bytes). The menu then saves the selected names in it.
+The ROMs and the disk operating systems are copyrighted and **not part of this repository**. Every port loads the ROMs at run time (from the SD card, the Pocket's assets folder, the MiSTer's `games` folder, or the browser page); none is in a bitstream. See [roms/README.md](roms/README.md) for the file names and the dumps.
 
 ### Machines
 
@@ -93,132 +77,7 @@ python tools/dsk2dmk.py DiskImages/ /path/to/sd/CP300              a whole folde
 
 To run a BASIC program from a disk with TRSDOS 1.3: at `TRSDOS Ready` type `BASIC`, press Enter at `How many files?` and `Memory size?`, then `RUN"NAME/BAS"` (add `:1` after the name for a file in Drive 1).
 
-### DE0 controls
-
-| Control | Function |
-|---|---|
-| BUTTON0 | reset |
-| SW0 | up = 50 Hz, down = 60 Hz (the CP-300 is PAL-M, 60 Hz) |
-| SW1 | CPU turbo |
-| SW3:2 | scanlines |
-| SW4 | tape sounds |
-| LEDG0 | CPU running (out of reset) |
-| LEDG8:1 | IO controller: after start-up b0 card found, b1 `/CP300` found, b2 `CP300.CFG` found, b7:3 error code; then the last raw PS/2 byte |
-| LEDG9 | PLL locked |
-| GPIO0 J4 pins 22-40 | original CP-300 keyboard matrix, 3.3 V (see [Original CP-300 keyboard](#original-cp-300-keyboard)) |
-| VGA | 31 kHz through the MiST scandoubler |
-| PS/2 | keyboard |
-| RS-232 | TRS-80 RS-232 at ports E8-EA, 9600 8N1 |
-| GPIO0_D[0] | audio out (sigma-delta, add an RC filter) |
-| GPIO0_D[1] | cassette in (reserved) |
-
-The DE0's SD slot is used in SPI mode, 3.3 V (CLK Y21, CMD/MOSI Y22, DAT0/MISO AA22, DAT3/CS W21, WP W20).
-
-### Original CP-300 keyboard
-
-The original keyboard is a passive 8 x 8 switch matrix (no diodes). On the CP-300 board the row lines A0-A7 are driven by inverters from the CPU address lines and the column lines C0-C7 are pulled up to 5 V and read onto the data bus (D0-D7). The FPGA does that job itself, at **3.3 V**: it drives the eight row lines (low = selected, idle high), reads the eight column lines (pulled up to 3.3 V, a key pulls its column low), debounces about 5 ms and merges the keys with the PS/2 keyboard. Both keyboards work at the same time. **Never connect 5 V to these pins.**
-
-Connector: the last nine pin pairs of the DE0 GPIO0 header (J4, pins 23-40, a 2 x 9 block), so one 18-pin ribbon plug is enough. Columns are on the odd pins, rows on the even pins, with 3.3 V and GND in the middle.
-
-| J4 pin | GPIO0 | FPGA pin | Signal | CP-300 keyboard connector CN-5 |
-|---|---|---|---|---|
-| 22 | D15 | AA4 | reset key (optional, low = pressed) | |
-| 23 | D16 | V14 | column C0 | pin 9 |
-| 24 | D17 | U14 | row A0 | pin 1 |
-| 25 | D18 | Y13 | column C1 | pin 10 |
-| 26 | D19 | W13 | row A1 | pin 2 |
-| 27 | D20 | U13 | column C2 | pin 11 |
-| 28 | D21 | V12 | row A2 | pin 3 |
-| 29 | | | **3.3 V** (pull-up supply) | |
-| 30 | | | **GND** | |
-| 31 | D22 | R10 | column C3 | pin 12 |
-| 32 | D23 | V11 | row A3 | pin 4 |
-| 33 | D24 | Y10 | column C4 | pin 13 |
-| 34 | D25 | W10 | row A4 | pin 5 |
-| 35 | D26 | T8 | column C5 | pin 14 |
-| 36 | D27 | V8 | row A5 | pin 6 |
-| 37 | D28 | W7 | column C6 | pin 15 |
-| 38 | D29 | W6 | row A6 | pin 7 |
-| 39 | D30 | V5 | column C7 | pin 16 |
-| 40 | D31 | U7 | row A7 | pin 8 |
-
-The same, from the keyboard connector side (the CP-300 board's CN-5 has the eight rows on pins 1-8 and the eight columns on pins 9-16; the numbers are read from the schematic, so check them against your keyboard cable with a multimeter before plugging it in):
-
-| CN-5 pin | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Signal | A0 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | C0 | C1 | C2 | C3 | C4 | C5 | C6 | C7 |
-| DE0 J4 pin | 24 | 26 | 28 | 32 | 34 | 36 | 38 | 40 | 23 | 25 | 27 | 31 | 33 | 35 | 37 | 39 |
-
-Optional: pin 22 (GPIO0_D15, AA4) is a reset input, low = pressed, with a pull-up. Connect the keyboard's reset key(s) between it and GND (pin 12 or 30); it acts like BUTTON0.
-
-The columns have the FPGA's weak internal pull-ups (about 25 kOhm), which is enough for a short cable. For a longer cable add a 4.7 kOhm to 10 kOhm resistor from each column to the 3.3 V on pin 29. The row and column resistors and inverters on the CP-300 board are not used; wire only the keyboard itself (the key matrix) to the plug.
-
-The keys (row = address line, column = data bit, as printed on the schematic):
-
-| Row | C0 | C1 | C2 | C3 | C4 | C5 | C6 | C7 |
-|---|---|---|---|---|---|---|---|---|
-| A0 | @ | A | B | C | D | E | F | G |
-| A1 | H | I | J | K | L | M | N | O |
-| A2 | P | Q | R | S | T | U | V | W |
-| A3 | X | Y | Z | | | | | |
-| A4 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
-| A5 | 8 | 9 | : | ; | , | - | . | / |
-| A6 | ENTER | CLEAR | BREAK | UP | DOWN | LEFT | RIGHT | SPACE |
-| A7 | L SHIFT | R SHIFT | | | | | | |
-
-The original keyboard has no F12 key; **SHIFT + BREAK** opens the menu, and UP, DOWN, LEFT, RIGHT, ENTER and BREAK move around in it (table above). A PS/2 keyboard is not needed.
-
-## Building from the command line
-
-### What you need
-
-| Tool | Version | Used for |
-|---|---|---|
-| Quartus II Web Edition | 13.0sp1 (free, supports Cyclone III) | synthesis, place and route |
-| Python | 3 | ROM package, disk tools |
-| SDCC | **4.6** (the build stops on any other version) | IO controller firmware (Z80, native `--sdcccall 1`) |
-| GHDL | 6 | simulation (optional) |
-| gcc | any | PC tests of the firmware (optional) |
-| git | | clone with submodules |
-
-On Windows use Git Bash (or MSYS2) for the shell scripts.
-
-### One command
-
-```
-git clone --recurse-submodules <this repository>
-cd CP-300_FPGA
-# put the ROM dumps in roms/ first
-./build.sh                 # roms + firmware + fpga
-```
-
-`build.sh` takes one or more steps: `roms`, `firmware`, `fpga`, `test` (default: `all` = roms firmware fpga).
-
-| Step | What it runs | Output |
-|---|---|---|
-| `roms` | `python tools/mkroms.py` | `roms/cp300_roms_pkg.vhd` (not committed) |
-| `firmware` | `sh firmware/build.sh` (SDCC) | `rtl/io/io_fw_pkg.vhd`, the 16 KB ROM of the IO controller (commit it together with the C changes) |
-| `fpga` | `quartus_sh --flow compile cp300_de0` in `syn/de0` | `syn/de0/output_files/cp300_de0.sof` and `cp300_de0.pof` |
-| `test` | disk converter and FAT tests | |
-
-The `fpga` step prints the fitter result and the worst timing slack, and fails if timing is not met. A full compile takes 1 to 3 minutes. The tools are found on the `PATH`; otherwise set `QUARTUS_BIN` (the folder with `quartus_sh`) and `SDCC_BIN` (the folder with `sdcc`).
-
-### The steps by hand
-
-```
-python tools/mkroms.py
-sh firmware/build.sh
-cd syn/de0
-quartus_sh --flow compile cp300_de0
-```
-
-Load the `.sof` over JTAG from the command line (the `.pof` is easiest with the Quartus Programmer, see Quick start):
-
-```
-quartus_pgm -c USB-Blaster -m JTAG -o "p;output_files/cp300_de0.sof"
-```
-
-### Simulation and tests
+## Simulation and tests
 
 All simulations use GHDL and write their results to `sim/out/` (not committed). GHDL is about 1000 times slower than the real machine: a simulated second takes 15 to 20 minutes.
 
@@ -236,26 +95,36 @@ All simulations use GHDL and write their results to `sim/out/` (not committed). 
 ## Repository layout
 
 ```
-build.sh         command line build (roms, firmware, fpga, test)
+build.sh         command line build of the DE0 (roms, firmware, fpga, test)
 rtl/de0/         DE0 top level, 50 -> 42 MHz PLL
+rtl/tang/        shared board layer of the Tang Nano 9K and 20K (frame buffer in RAM, HDMI)
 rtl/cp300/       the system ROM (four 2732 EPROM images)
 rtl/ht1080z/     the core: Z80 system, video, keyboard (vendored from mist-devel/ht1080z, modified)
 rtl/fdc/         WD1793 floppy controller (VHDL)
 rtl/kbd/         scanner for the original CP-300 keyboard matrix
-rtl/io/          IO controller: a second Z80 with SD card, OSD menu, PS/2 and the floppy sector service
+rtl/io/          IO controller of the SD card ports: a second Z80 with SD card, OSD menu, PS/2 and the floppy sector service
 rtl/T80/         submodule: mist-devel/T80 (Z80 core)
 rtl/mist-modules submodule: mist-devel/mist-modules (scandoubler, OSD)
-firmware/        C firmware of the IO controller (SDCC): SD card, FAT, DMK images, menu
-firmware/tests/  PC tests of the firmware code
-syn/de0/         Quartus II 13.0sp1 project
-syn/analogue/    Analogue Pocket (openFPGA) core: Quartus Prime project, JSON definition files, firmware port in firmware/pocket
-sim/             GHDL testbenches and scripts
-roms/            CP-300 ROM dumps (not committed)
-tools/           mkroms, mkfw, mkfat, dsk2dmk and their tests
+firmware/        C firmware of the IO controller (SDCC): SD card, FAT, DMK images, menu; firmware/pocket: the variant for the
+                 Pocket, MiSTer and BeagleV-Fire (disks come as data slots, not from a FAT card)
+syn/de0/         Terasic DE0: Quartus II 13.0sp1 project
+syn/analogue/    Analogue Pocket (openFPGA): Quartus Prime project, JSON definition files
+syn/mister/      MiSTer: Quartus Prime project, the emu shell
+syn/tangnano9k/  Sipeed Tang Nano 9K: Gowin project and constraints
+syn/tangnano20k/ Sipeed Tang Nano 20K
+syn/beaglev-fire/ BeagleV-Fire: gateware around the core (rtl), the CP-300 cape for the BeagleV-Fire gateware framework,
+                 the daemon and web page (host), the installer and the package builder (package), the releases
+sim/             GHDL testbenches and scripts (sim/tang: the Tang frame buffer path)
+roms/            ROM dumps go here (not committed)
+tools/           mkroms, mkfw, mkfat, dsk2dmk, mkpocketrom, mkmisterrom and their tests
 docs/            design notes
 ```
 
-How the pieces fit: the Z80 core and the video run at the CP-300's own speed. A second Z80, the IO controller, runs a small C program from an on-chip ROM. It reads the SD card over SPI, draws the menu through the MiST OSD, reads the PS/2 keyboard while the menu is open, and answers the floppy controller's requests for sectors by looking them up in the mounted DMK file.
+How the pieces fit: the Z80 core and the video run at the CP-300's own speed. On the SD-card ports a second Z80, the IO controller,
+runs a small C program from an on-chip ROM: it reads the SD card over SPI, draws the menu through the MiST OSD, reads the PS/2
+keyboard while the menu is open, and answers the floppy controller's requests for sectors by looking them up in the mounted DMK
+file. On the Pocket, MiSTer and BeagleV-Fire the same IO controller serves the requests from disk images that the host side
+provides (the Pocket's data slots, the MiSTer's HPS, the browser through the daemon).
 
 Changes to vendored files:
 
@@ -265,11 +134,13 @@ Changes to vendored files:
 
 ## Known limitations
 
+
 - No formatting of disks (WRITE TRACK / READ TRACK) and no 3 s motor timeout.
 - Only 256-byte sectors; copy-protected disks may not work.
 - No cassette playback or recording yet.
 - No sound chip.
 - File names on the SD card are 8.3 only.
+- The ports differ: see each port's README for what it has and what it lacks.
 
 ## Licence and credits
 
@@ -280,5 +151,16 @@ GPL-3.0 (see [LICENSE](LICENSE)). The vendored files keep their own headers:
 - T80 and mist-modules: their own licences (MiST project).
 - `rtl/fdc/wd1793.vhd`: VHDL port of the WD1793 replica by Viacheslav Slavinsky and Sorgelig, with the 18 x 256 modification by Stan Hodge (GPL-2.0-or-later).
 - DMK format: David Keil. JV1/JV3: Jeff Vavasour.
+- The BeagleV-Fire gateware is built with the [BeagleV-Fire gateware framework](https://git.beagleboard.org/beaglev-fire/gateware)
+  (MIT, Microchip and BeagleBoard.org) and the Microchip [Hart Software Services](https://github.com/polarfire-soc/hart-software-services)
+  bootloader (Microchip licence, MIT-style); the package contains the built bitstream, its source and versions are in the package's `SOURCE.txt`.
 
-The CP-300 ROMs and the disk operating systems are copyrighted and are not included.
+The CP-300 ROMs and the disk operating systems are copyrighted and are not included. Prológica, TRS-80, Tandy and the other
+names belong to their owners; this is an independent hobby project, not made or endorsed by any of them.
+
+## Disclaimer
+
+This is a hobby project, provided **as is**, without warranty of any kind. Programming an FPGA board can damage it, and flashing the
+BeagleV-Fire rewrites its bootloader and can leave the board unable to start. **You use everything here at your own risk; the
+author and contributors accept no responsibility or liability for any damage or loss.** The GPL-3.0 warranty disclaimer applies as
+well. The BeagleV-Fire package carries the full text and asks for an explicit acceptance before it flashes.

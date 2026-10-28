@@ -2,7 +2,7 @@
 
 The CP-300 core of this repository on the **Analogue Pocket** (Cyclone V 5CEBA4F23C8, openFPGA / APF), with an **on-screen keyboard** and **audio**.
 
-> **Status: written, simulated in parts, never compiled for the Pocket.** The machine that wrote this has Quartus II 13.0sp1 only, which cannot target Cyclone V, so nothing here has been through Quartus Prime, timing closure, or a real Pocket. What was checked is listed under [Verification](#verification). Expect a first compile to turn up errors (pin/IP/syntax details Quartus is stricter about than the simulators), and expect to tune things on real hardware. [Known limits](#known-limits-and-risks) lists what is most likely to need work.
+> **Status: runs on a real Analogue Pocket** (checked by the author): the ROM boots and a DOS boots from a disk image loaded from the Core Settings menu. The newest SD-card speed optimisations (whole-track reads, see [Known limits](#known-limits-and-risks)) are **not yet re-tested on hardware**. What was checked in simulation is listed under [Verification](#verification).
 
 | | |
 |---|---|
@@ -143,7 +143,7 @@ Not done: any Quartus Prime compile (synthesis, fitting, timing), the PLL with t
 
 ## Known limits and risks
 
-* **Never built.** See the status note. Likeliest first-compile problems: `$readmemh` ROM files not found (paths are relative to `src/fpga`), `altera_pll` parameter rounding, VHDL-2008 vs the old `std_logic_arith` in `ht1080z.vhd`, framework files that expect a clean Quartus Prime 18.1 tree.
+* **Newest SD-card speed work not re-tested on hardware.** The whole-track reads and the other SD-card speed optimisations were added after the last test on a real Pocket.
 * **Disk speed.** Every DMK block fetch is an APF command round trip, and the firmware's CRC code on a 21 MHz Z80 takes about 2 ms per sector. The WD1793 wait-state timeout is 100 ms, so slow commands would show as disk errors; if they do, a bigger block cache in `firmware/dmk.c` (a whole track) is the fix.
 * **Only DMK, 256-byte sectors**, like the other boards. No formatting.
 * **Docked keyboard** (USB HID scan codes on `cont3_*`) is not decoded; the buttons and the on-screen keyboard are the input.
