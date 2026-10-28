@@ -72,7 +72,7 @@ def main():
         # gateware
         shutil.copytree(lp, os.path.join(root, "gateware", "LinuxProgramming"))
         # installer and docs
-        for f in ("install.sh", "cp300-load-gateware", "README.txt"):
+        for f in ("install.sh", "cp300-load-gateware", "README.txt", "DISCLAIMER.txt"):
             shutil.copy(os.path.join(HERE, f), root)
         shutil.copy(os.path.join(REPO, "LICENSE"), root)
         open(os.path.join(root, "VERSION"), "w", newline="\n").write(a.version + "\n")

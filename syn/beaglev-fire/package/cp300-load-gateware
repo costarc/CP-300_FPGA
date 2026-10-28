@@ -12,9 +12,14 @@ fi
 [ -d "$GW_DIR/LinuxProgramming" ] || { echo "ERROR: $GW_DIR not found: run the CP-300 installer again" >&2; exit 1; }
 [ -x "$CHANGE_GW" ] || { echo "ERROR: $CHANGE_GW not found" >&2; exit 1; }
 
-if [ "${1:-}" != "--yes" ] && [ "${1:-}" != "-y" ]; then
-	echo "This flashes the CP-300 gateware ($(cat "$GW_DIR/GATEWARE_ID" 2>/dev/null)) and reboots the board."
-	read -r -p "Continue? [y/N] " ans
-	[ "$ans" = y ] || [ "$ans" = Y ] || exit 0
+echo
+cat "$GW_DIR/DISCLAIMER.txt" 2>/dev/null || echo "DISCLAIMER: flashing the board can leave it unable to start; you do this at your own risk."
+echo
+echo "This flashes the CP-300 gateware ($(cat "$GW_DIR/GATEWARE_ID" 2>/dev/null)) and reboots the board."
+if [ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ]; then
+	echo "--yes given: you accept the DISCLAIMER above"
+else
+	read -r -p "Type I ACCEPT to accept the disclaimer and flash, anything else to cancel: " ans
+	[ "$ans" = "I ACCEPT" ] || exit 0
 fi
 exec "$CHANGE_GW" "$GW_DIR"

@@ -6,7 +6,7 @@
 # the sidebar entry are replaced, the gateware is flashed only when it is not the one already loaded.
 #
 #   sudo ./install.sh               install / upgrade (asks before flashing)
-#   sudo ./install.sh --yes         do not ask
+#   sudo ./install.sh --yes         do not ask (you accept DISCLAIMER.txt)
 #   sudo ./install.sh --no-flash    software only
 #   sudo ./install.sh --force-flash flash the gateware even if it is already loaded
 #   sudo ./install.sh --no-web      gateware only
@@ -82,7 +82,7 @@ fi
 
 preflight() {
 	[ "$(uname -m)" = riscv64 ] || die "this package is for the BeagleV-Fire (riscv64), this machine is $(uname -m)"
-	for f in VERSION GATEWARE_ID gateware/LinuxProgramming/mpfs_bitstream.spi gateware/LinuxProgramming/mpfs_dtbo.spi \
+	for f in VERSION GATEWARE_ID DISCLAIMER.txt gateware/LinuxProgramming/mpfs_bitstream.spi gateware/LinuxProgramming/mpfs_dtbo.spi \
 		syn/beaglev-fire/host/cp300d.py tools/dsk2dmk.py deploy/cp300d.service deploy/cp300.nginx.conf; do
 		[ -e "$SELF/$f" ] || die "the package is incomplete: $f is missing"
 	done
@@ -107,6 +107,7 @@ install_gateware_files() {
 	mkdir -p "$GW_DIR"
 	cp -r "$SELF/gateware/LinuxProgramming" "$GW_DIR/"
 	cp "$SELF/GATEWARE_ID" "$GW_DIR/"
+	cp "$SELF/DISCLAIMER.txt" "$GW_DIR/"
 }
 
 install_web() {
@@ -157,16 +158,19 @@ flash() {
 		say "The CP-300 gateware ($cur) is already loaded: not flashing (--force-flash flashes it anyway)"
 		return 0
 	fi
+	echo
+	cat "$SELF/DISCLAIMER.txt"
 	cat <<E
 
 This writes the CP-300 gateware ($GATEWARE_ID) to the board's flash: the FPGA bitstream, the device tree overlay and
 the Hart Software Services bootloader. The board reboots by itself and reprograms the FPGA while it starts: this takes
 a couple of minutes, do not power it off before it is back.
-If the board does not come back, the way out is the one in BeagleBoard's flashing guide (FlashPro5/6 programmer).
 E
-	if [ "$YES" != 1 ]; then
-		read -r -p "Flash the gateware now? [y/N] " ans
-		[ "$ans" = y ] || [ "$ans" = Y ] || { say "Not flashed. Later: sudo cp300-load-gateware"; return 0; }
+	if [ "$YES" = 1 ]; then
+		say "--yes given: you accept the DISCLAIMER above"
+	else
+		read -r -p "Type I ACCEPT to accept the disclaimer and flash, anything else to skip: " ans
+		[ "$ans" = "I ACCEPT" ] || { say "Not flashed. Later: sudo cp300-load-gateware"; return 0; }
 	fi
 	say "Flashing"
 	"$CHANGE_GW" "$GW_DIR"
