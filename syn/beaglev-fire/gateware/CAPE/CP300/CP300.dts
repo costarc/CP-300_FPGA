@@ -1,0 +1,30 @@
+/dts-v1/;
+/plugin/;
+
+/*
+ * Device tree overlay for the CP-300 gateware (BeagleV-Fire). DRAFT, never compiled (no dtc here) and
+ * not tried on a board.
+ *
+ * Part 1 follows the BeagleV-Fire docs: the entry under /chosen/overlays is how the board (and
+ * /proc/device-tree/chosen/overlays) shows which gateware is loaded. The value is replaced by the
+ * framework with the git version of the gateware.
+ *
+ * Part 2 (the UIO node) is NOT from the docs. Placeholders to fix against the real gateware:
+ *   - reg: base address and size of the component's window on the MSS bus (not known yet)
+ *   - the kernel needs uio_pdrv_genirq with  of_id=generic-uio  (kernel command line) or a driver that
+ *     binds another compatible string; if the BeagleV-Fire kernel has no UIO, run  cp300d.py --mem <base>
+ *     (CONFIG_STRICT_DEVMEM may refuse that: check).
+ */
+&{/chosen} {
+	overlays {
+		CP300-GATEWARE = "GATEWARE_GIT_VERSION";
+	};
+};
+
+&{/soc} {
+	cp300: cp300@0 {                  /* TODO: unit address = window base */
+		compatible = "generic-uio";
+		reg = <0x0 0x0 0x0 0x100000>;     /* TODO: base (two cells of address) and the window size, 1 MB wanted */
+		status = "okay";
+	};
+};
