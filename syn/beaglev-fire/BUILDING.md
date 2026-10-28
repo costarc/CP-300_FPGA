@@ -64,6 +64,9 @@ python syn/beaglev-fire/gateware/make_cape.py <gw>
 
 It adds `CAPE_OPTION:CP300` to the framework: the HDL, a 50 → 42 MHz PLL core, the overlay and the pin file of the template.
 It also removes `translate_off` blocks from the staged VHDL (Libero's parser ignores them) and keeps one array in registers.
+It needs the `rtl/T80` submodule (`git submodule update --init rtl/T80`). Every edit of the template `CAPE.v` must match
+exactly once or the script stops; the staged `CAPE.v` must have `assign INT[23:0] = {23'h000000, cp300_irq};` (in
+package 0.2.0 that edit silently missed and the interrupt was not connected).
 
 **5. Two edits to the framework copy** (scratch clone, not committed anywhere):
 
@@ -77,23 +80,27 @@ It also removes `translate_off` blocks from the staged VHDL (Libero's parser ign
 **6. Libero.** From `sources/FPGA-design`:
 
 ```
-libero SCRIPT:BUILD_BVF_GATEWARE.tcl "SCRIPT_ARGS:CAPE_OPTION:CP300 BOARD:mpfs-beaglev-fire BOOTMODE:BM1 PROJECT_LOCATION:<gw>/work/libero TOP_LEVEL_NAME:CP300_943F37F HSS_IMAGE_PATH:<gw>/work/HSS/hss-envm-wrapper-bm1-p0.hex PROG_EXPORT_PATH:<gw>/build MSS_COMPONENT_PATH:<gw>/work/MSS/PF_SOC_MSS.cxz INITIAL_DIRECTORY:<gw> DESIGN_VERSION:4301"
+libero SCRIPT:BUILD_BVF_GATEWARE.tcl "SCRIPT_ARGS:CAPE_OPTION:CP300 BOARD:mpfs-beaglev-fire BOOTMODE:BM1 PROJECT_LOCATION:<gw>/work/libero TOP_LEVEL_NAME:CP300_943F37F HSS_IMAGE_PATH:<gw>/work/HSS/hss-envm-wrapper-bm1-p0.hex PROG_EXPORT_PATH:<gw>/build MSS_COMPONENT_PATH:<gw>/work/MSS/PF_SOC_MSS.cxz INITIAL_DIRECTORY:<gw> DESIGN_VERSION:4302"
 ```
 
 Set `LM_LICENSE_FILE` to your licence file. It runs synthesis, place and route and timing, then exports
 `build/bitstream/LinuxProgramming/mpfs_bitstream.spi` (about 10 minutes). The log file is written only when it ends: watch
-the project folder. `DESIGN_VERSION` must differ from the one loaded on the board, or the board does not reprogram the fabric.
+the project folder. `DESIGN_VERSION` must differ from the one loaded on the board, or the board does not reprogram the fabric:
+raise it for every gateware release (4301 = package 0.2.0, 4302 = 0.3.0).
 
 **7. The overlay image** (Linux or WSL, needs `dtc`, `python3-yaml`, `python3-git`). From `<gw>`, with the framework's
 `gateware_scripts`:
 
 ```python
 import gateware_scripts.generate_gateware_overlays as g
-g.get_gateware_git_version = lambda work_dir: "2025.10-13-g943f37f-CP300"   # the string that /chosen/overlays will show
+g.get_gateware_git_version = lambda work_dir: "2025.10-13-g943f37f-4302-CP300"   # the string that /chosen/overlays will show
 g.generate_gateware_overlays("sources/FPGA-design", "out", "CAPE_OPTION:CP300", "default")
 ```
 
-This writes `out/mpfs_dtbo.spi`. Copy it next to the bitstream (`LinuxProgramming/`).
+This writes `out/mpfs_dtbo.spi`. Copy it next to the bitstream (`LinuxProgramming/`). The string is the gateware's identity,
+`<framework version>-<DESIGN_VERSION>-CP300`. The installer flashes only when the loaded identity differs from the package's,
+so it must change with every gateware release (0.2.0 used `2025.10-13-g943f37f-CP300`), and it must end in `-CP300`
+(`build_package.py` looks for that).
 
 **8. The package:**
 

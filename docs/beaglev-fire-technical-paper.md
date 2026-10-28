@@ -4,7 +4,7 @@
 host daemon, and a web page as the whole user interface.**
 
 Part of the [CP-300 FPGA](../README.md) project. Port README: [`syn/beaglev-fire`](../syn/beaglev-fire/README.md). Status of the work
-described here: runs on the author's board, package 0.2.0, see [section 12](#12-what-is-verified-and-what-is-not).
+described here: runs on the author's board, package 0.3.0, see [section 12](#12-what-is-verified-and-what-is-not).
 
 **Detailed build steps** (framework and HSS commits, MSS generation, the cape, the two framework edits, the Libero run, the
 overlay identity and the package) are in the repository, in
@@ -150,15 +150,19 @@ exact kernel, which makes a distributable package fragile. UIO ships in the stoc
 the window through `/dev/mem` (`cp300d.py --mem 0x41000000`, root only); the installed service always uses `--uio /dev/uio0`.
 **Cost:** CPU-driven (programmed I/O) transfers. We measured that is adequate (section 10): a full frame is read in about 1.5 ms.
 
-### D4. The host *polls*; the interrupt line is wired but not used
+### D4. The interrupt wakes the host for the disk; a timer still drives everything else
 
-The fabric raises a level interrupt for a pending disk request (`irq = busy`), and `make_cape.py` wires it to bit 0 of the cape's
-`INT[23:0]` bus. It stops there: the device tree overlay declares no `interrupts` property, so the UIO device has no IRQ and
-`read()` on `/dev/uio0` would never return. The daemon polls the status register on a 0.5 ms (busy) / 4 ms (idle) schedule.
-**Reason:** it removes a whole class of failures (UIO interrupt re-arm semantics, missed edges), and the disk path is not latency
-critical *at that granularity*: the emulated floppy controller stays busy until the IO controller's firmware has the data, and the
-firmware waits up to about one second per request before it reports an error. Switching to the interrupt is listed as future work
-(it needs the `interrupts` property in the overlay as well as the daemon change); it would lower idle CPU use, not change function.
+The fabric raises a level interrupt for a pending disk request (`irq = busy`). `make_cape.py` wires it to bit 0 of the cape's
+`INT[23:0]` bus, which is `MSS_INT_F2M[8]`; the overlay declares it as PLIC source 126 (fabric interrupts are PLIC 118 + n). The
+daemon waits on `/dev/uio0` with the event loop: `uio_pdrv_genirq` masks the interrupt each time it fires, the daemon serves the
+request, writes `DONE` (the level drops), and only then unmasks it by writing 1 to the device. A request that arrives in between
+keeps the level high, so it fires again on unmask: with a level interrupt nothing can be missed. **The timed wake-up stays**
+(0.5 ms after disk work, 4 ms idle), because the picture and the audio are polled anyway, and as the fallback: on a gateware
+without the interrupt (package 0.2.0, where an exact-text edit of the template silently missed and left `INT` at zero) the unmask
+returns `EIO` and the daemon simply polls. So the interrupt cuts the disk latency from up to 4 ms to the event loop's reaction
+time; it does not lower idle CPU use. The disk path is not latency critical *at 4 ms granularity* either way: the emulated floppy
+controller stays busy until the IO controller's firmware has the data, and the firmware waits up to about one second per request
+before it reports an error.
 
 ### D5. Frames are *pulled*, double-buffered, and validated by a counter, not by locking
 
@@ -275,9 +279,9 @@ Properties worth copying:
 * **The cost** is several clocks of each domain per register access (two synchroniser stages each way plus the state machine). That is irrelevant for the control and mailbox traffic and, for
   the frame, simply defines the 1.5 ms bulk read (section 10).
 * **A `PAGED` mode** exists for a bus window smaller than 1 MB: 4 KB pages, an 8-bit page register (address bits 19:12) at window
-  offset `0xFFC`. It is not used on the BeagleV-Fire but is the escape hatch for narrower windows on other boards. It is **not
-  simulated**: `sim/tb_apb.v` instantiates the bridge with `PAGED = 0` only (its header comment says "plain and paged", but no
-  paged test exists yet).
+  offset `0xFFC`. It is not used on the BeagleV-Fire but is the escape hatch for narrower windows on other boards. `sim/tb_apb.v`
+  tests it next to the plain bridge: a 12-bit window, the page register, the registers on page 0, the frame and track RAM windows
+  on pages `0x30` and `0x20`, an unmapped page reading zero.
 * **A known gap:** there is no bus timeout. If the 42 MHz clock were absent the CPU would hang on the access. The core domain's
   reset is held by `pll_locked`, but the bridge itself would still wait. On the improvement list.
 
@@ -444,7 +448,7 @@ copyrighted, so they are never part of a bitstream or a package); no file system
 
 ## 7. The host side: the Linux daemon
 
-`host/cp300d.py` is about 650 lines of standard-library Python (no pip packages, so the package installs on the stock image) with
+`host/cp300d.py` is about 700 lines of standard-library Python (no pip packages, so the package installs on the stock image) with
 three layers.
 
 ### 7.1 Register access: `regs32.c`
@@ -492,13 +496,14 @@ loop:
     if f and clients: for each client: send zlib(frame XOR previous frame) over the WebSocket
     ev = audio_events()              # forward edges to every client
     every 2 s: save dirty disk images
-    sleep 0.5 ms if there was disk work, else 4 ms
+    if the disk interrupt fired: unmask it (only now, after DONE)
+    wait for the interrupt, at most 0.5 ms if there was disk work, else 4 ms
 ```
 
 Notes for reuse:
 
-* **Priority.** Anything the *hardware* blocks on is served before anything the *user* sees. The disk path got 0.5 ms polling;
-  video is allowed to drop.
+* **Priority.** Anything the *hardware* blocks on is served before anything the *user* sees. The disk path got the interrupt
+  (with 0.5 ms polling as the fallback); video is allowed to drop.
 * **Frame transport.** Each client receives the XOR of the current frame with its own previous frame, compressed with zlib level 1.
   Most of the time most pixels do not change, so a frame becomes a few hundred bytes. If a client has no previous frame (new
   connection) it receives a "key" frame (kind 0). This is plain delta coding; it was chosen over PNG/JPEG because it is lossless,
@@ -512,12 +517,13 @@ Notes for reuse:
 ### 7.4 A bring-up probe built into the product
 
 `GET /api/debug` returns the control, status, frame, debug-byte and audio-count registers, the time of 1000 register reads, the
-time of one frame read, a **write-readback test** and the measured frame counter rate over one second. The readback test writes
-`0xA5A55A5A` to `KEYS_LO` and reads it back; writes `CTRL = 1` and reads it back, then re-applies the daemon's own control state;
-and writes an eight-byte pattern *as a block* over `KEYS_LO`/`KEYS_HI` to detect byte-store corruption. It leaves the keys at zero
-(not at their previous value), and the `CTRL = 1` write starts the machine for a moment if it was stopped, so it is a bring-up tool,
-not something to call while a program runs. The call also blocks the daemon for the one-second rate measurement. The integration bugs of section 11 (L1 to L3) were isolated
-with this kind of probe. If you build one thing before your first board bring-up, build this.
+time of one frame read, a **write-readback test**, whether the disk interrupt is in use (`irq`) and how many have arrived (`irqs`),
+and the measured frame counter rate over one second. The readback test writes `0xA5A55A5A` to `KEYS_LO` and reads it back, then
+writes an eight-byte pattern *as a block* over `KEYS_LO`/`KEYS_HI` to detect byte-store corruption, and puts the keys back. It
+writes nothing else, so it can be called while a program runs, and the one-second rate measurement is an `await`, not a `sleep`:
+the daemon keeps serving disk requests meanwhile. (The first version wrote `CTRL = 1`, which started a stopped machine for a
+moment, and slept for that second, which could hold a disk request past the firmware's timeout: a probe must not disturb the
+thing it measures.) The integration bugs of section 11 (L1 to L3) were isolated with this kind of probe. If you build one thing before your first board bring-up, build this.
 
 ---
 
@@ -551,6 +557,7 @@ server → browser, binary:
 server → browser, text:   JSON state (sent on connect and on every change)
 browser → server, text:   {"keys": "<16 hex digits>"}  the whole 64-bit matrix, every change
                           {"ctrl": {...}}              run / reset / turbo / wp
+                          {"keyframe": 1}              the next frame to this client is a whole one
 ```
 
 Design points:
@@ -560,14 +567,15 @@ Design points:
   writes two registers. (This is the right choice whenever the receiver wants a level and not an edge.)
 * **State is pushed.** Every change on the server is pushed to all clients; clients do not poll.
 * **Frames are in order and, per client, complete.** The daemon may skip hardware frames, but every frame it reads goes to every
-  client, so each client's XOR chain is unbroken; TCP keeps them in order. `seq` is sent but the page does not use it. The only
-  key frame a client gets is the first one after it connects. **Known gap:** if the page fails to decode a frame it drops its
-  `prev` frame, but the server does not know and keeps sending XOR frames, which the page then draws as they are (wrong picture)
-  until the WebSocket reconnects. A "send me a key frame" message, or a key frame every few seconds, would close this.
+  client, so each client's XOR chain is unbroken and `seq` goes up by one from frame to frame; TCP keeps them in order. A client
+  gets a whole frame when it connects and whenever it asks. **Resync:** the page applies an XOR frame only if it has the previous
+  frame and `seq` follows it. Otherwise (a decode error, a gap) it drops its `prev`, skips XOR frames, and sends `{"keyframe": 1}`
+  once; the daemon clears that client's previous frame, so the next one goes out whole. (The first version noticed nothing and
+  drew XOR frames as pictures until the WebSocket reconnected.)
 
 ### 8.3 The page (`host/web/index.html`)
 
-A single self-contained file, no framework, no build step, about 290 lines.
+A single self-contained file, no framework, no build step, about 300 lines.
 
 * **Keyboard mapping is from *characters* to the machine's *matrix*,** not from physical keys, with an explicit table of how the
   original keyboard types shifted symbols (`"` = shift+2, as on a Model III). Rationale: users type the character they see on their
@@ -599,7 +607,8 @@ The same overlay does three jobs (`gateware/CAPE/CP300/cp300.dtso`):
 
 &{/fabric-bus@40000000} {
     cp300: cp300@41000000 { compatible = "generic-uio"; reg = <0x0 0x41000000 0x0 0x100000>;
-                            clocks = <&fabric_clk3>; status = "okay"; };
+                            clocks = <&fabric_clk3>; interrupt-parent = <&plic>; interrupts = <126>;
+                            status = "okay"; };
 };
 ```
 
@@ -608,7 +617,10 @@ The same overlay does three jobs (`gateware/CAPE/CP300/cp300.dtso`):
 * `generic-uio` makes `/dev/uio0` with name `cp300` (`/sys/class/uio/uio0/name`). The systemd unit refuses to start the daemon unless
   that file reads `cp300`, so a different gateware can never be driven by this software. The service runs as the ordinary user
   `beagle`; the installer's udev rule (`99-cp300-uio.rules`, group `kmem`, mode 0660) gives it access to the device.
-* The overlay has no `interrupts` property (see D4).
+* `interrupts = <126>` gives the UIO device the disk request interrupt (D4). The number is not in any table we had: the cape's
+  `INT[0]` is `MSS_INT_F2M[8]` in the generated top level, and the board's own device tree fixes the mapping (its PCIe root port,
+  on `F2M[1]`, is PLIC 119; the IHC mailbox, on `F2M[62]`, is 180), so fabric interrupts are PLIC 118 + n. One of the framework's
+  own cape overlays implies a different offset; the board's live, working devices were taken as the reference.
 
 ### 9.2 Building the gateware
 
@@ -621,22 +633,27 @@ The full procedure, step by step with the exact commands, versions and pitfalls,
 4. run `python syn/beaglev-fire/gateware/make_cape.py <framework>` to add `CAPE_OPTION:CP300`;
 5. make the two documented edits to the scratch framework copy (Libero version check, AXI interconnect version);
 6. run `BUILD_BVF_GATEWARE.tcl` in Libero with `CAPE_OPTION:CP300` and a new `DESIGN_VERSION`, which exports
-   `LinuxProgramming/` (`mpfs_bitstream.spi`, `mpfs_dtbo.spi`);
-7. build the package with `syn/beaglev-fire/package/build_package.py --gateware <dir>`.
+   `LinuxProgramming/mpfs_bitstream.spi`;
+7. build the overlay image `mpfs_dtbo.spi` with the framework's `generate_gateware_overlays` (in WSL, needs `dtc`), giving it
+   the gateware identity `<framework version>-<DESIGN_VERSION>-CP300`;
+8. build the package with `syn/beaglev-fire/package/build_package.py --gateware <dir>`.
 
 The structural points:
 
 * `make_cape.py` **adds** a cape option to a checkout of the framework: it copies the `VERILOG_TEMPLATE` cape, replaces its
   `apb_ctrl_status` register block with the CP-300 instance and a PLL, adds `PREADY`/`PSLVERR` to the cape's ports and APB bus
-  interface, routes `irq` to `INT[0]`, stages the HDL (stripping `translate_off` blocks that Libero's parser ignores; forcing one
+  interface, routes `irq` to `INT[0]` (every edit of the template must match exactly once or the script stops: in 0.2.0 an
+  exact-text replace of `INT` silently missed, see L5), stages the HDL (stripping `translate_off` blocks that Libero's parser ignores; forcing one
   small array, `head_pos` in `wd1793.vhd`, to registers to avoid a synthesiser error), generates the import script, and replaces
   the template's cape overlay with `cp300.dtso` (the template's LED overlay stays). The framework itself is
   never edited in the repository; two small edits made on a scratch copy are documented instead.
 * **Pin the framework to the stock gateware's version.** A framework newer or older than the bootloader/MSS the board was shipped with
   can give a design that boots to nothing. We pinned to the commit that matches the board's stock gateware, and the HSS to the one
   that commit pins.
-* **The identity string must be unique per design** (`…-CP300`) and the design *version* number must differ from what is loaded or the
-  board will not reprogram.
+* **The identity string must be unique per design *and per release*** (`2025.10-13-g943f37f-4302-CP300`: framework version, design
+  version, `CP300`), and the design *version* number must differ from what is loaded or the board will not reprogram. The installer
+  flashes only when the loaded identity differs, so an identity that stays the same across gateware releases means boards never get
+  the new gateware (0.2.0 used `2025.10-13-g943f37f-CP300`, without the design version).
 
 ### 9.3 The package and the installer
 
@@ -685,11 +702,12 @@ All numbers are from the author's board with the stock 2025.10-13 gateware base 
 | Frame rate in the page | about 40 fps (hardware 60 Hz) | Python (XOR + framing) is the limit |
 | Audio FIFO | 256 edges, 1 µs timestamps, 8.39 s wrap | |
 | Disk transfer unit | up to 16 KB per request (a track) | one mailbox cycle |
-| Polling | 0.5 ms with disk activity, 4 ms idle | interrupt unused |
+| Disk wake-up | the UIO interrupt (PLIC 126) | polling (0.5 ms busy, 4 ms idle) remains for picture, audio and as fallback |
 | Host CPU | one Python process, one core | |
 
 **Where the time goes, in the order we would fix it:** (1) the Python XOR over the frame: do it in C (the helper library already
-exists) or in the fabric; (2) polling: use the interrupt; (3) frame dedup: skip the whole pipeline when the frame counter has not
+exists) or in the fabric; (2) the 4 ms timer for the picture: a frame interrupt (a second `INT` bit on `frame_cnt`) would wake
+the loop once per frame instead; (3) frame dedup: skip the whole pipeline when the frame counter has not
 moved, which already happens. The *bus* is not the bottleneck at any point.
 
 ---
@@ -732,6 +750,11 @@ ignored `translate_off` pragmas so simulation-only code was synthesised. *Fixes:
 `syn_ramstyle = "registers"` hint; remove initial values from arrays that have a reset. *Rule:* **simulate with the vendor's
 synthesis semantics in mind, and script the adaptations** so they are reproducible and not edits of someone's checkout.
 
+A scripted adaptation can also fail silently. `make_cape.py` connected the interrupt with an exact-text replace of
+`assign INT[23:0] = 24'h000000;`; the template spells it `24'h0`, the replace matched nothing, and package 0.2.0 shipped with the
+interrupt tied to zero. Nobody noticed, because nothing used it yet. *Fix:* every edit of a vendor template must match exactly once
+or stop the script. *Rule:* **a patch step that can find nothing must be an error, not a no-op.**
+
 ### L6. Systems integration is half the work
 
 None of these were gateware bugs: a duplicate `default` server in nginx because a backup file had been left in `sites-enabled`; the
@@ -756,7 +779,9 @@ bugs, at no cost.
 **Verified on the author's board** (BeagleV-Fire, Ubuntu 24.04 image of 2025-07-21, kernel 6.6.75, stock gateware 2025.10-13): the
 gateware builds, meets timing and boots the board; `/dev/uio0` appears and the ID register reads `0x43503001`; the CP-300 boots
 TRSDOS 1.3 from an uploaded disk image; a game plays; keyboard and sound work; the page works through nginx (`/cp300/`) and from the
-Cockpit sidebar; the installer's software path and its "already loaded, do not flash" path ran.
+Cockpit sidebar; the installer's software path and its "already loaded, do not flash" path ran (all with package 0.2.0). For 0.3.0:
+the daemon's polling fallback against the 0.2.0 gateware (unmasking the UIO interrupt returns `EIO`); in simulation, the `PAGED`
+bridge (`sim/run_apb.sh`) and the key-frame request, the `seq` check and the non-intrusive probe (`host/test_cp300d.py`).
 
 **Not verified:**
 
@@ -765,8 +790,9 @@ Cockpit sidebar; the installer's software path and its "already loaded, do not f
 * A recovery with a FlashPro5/6 programmer.
 * Boards, kernels or stock gateware versions other than the above.
 * A build on the framework's officially supported Libero version (2025.2 or earlier) to remove the doubt about 2026.1.
-* The frame rate above about 40 fps; the interrupt path (not declared in the overlay, not used by the daemon).
-* The bridge's `PAGED` mode (no simulation, not used on this board).
+* The 0.3.0 gateware on a board: the interrupt arriving as PLIC 126 (`"irq": true` and a rising `irqs` in `/api/debug`).
+* The frame rate above about 40 fps.
+* The bridge's `PAGED` mode in hardware (simulated only; not used on this board).
 
 Flashing the board rewrites its bootloader with no fallback; the README and the package carry a disclaimer and the installer asks for
 explicit acceptance.

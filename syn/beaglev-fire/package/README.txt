@@ -68,6 +68,9 @@ What it does, in this order
     then reboots by itself and reprograms the FPGA while it starts. This takes a couple of minutes. DO NOT POWER THE BOARD OFF until it is back (your SSH
     session ends at the reboot; ping the board or reconnect after a few minutes).
     If the CP-300 gateware is already the loaded one, it says so and does not flash again.
+    Upgrading from 0.2.0: this package has a new gateware (2025.10-13-g943f37f-4302-CP300: the disk request now reaches
+    the daemon as an interrupt), so the installer flashes it. With --no-flash the new software still works on the 0.2.0
+    gateware; it polls instead.
 
 Options
     sudo ./install.sh --yes            do not ask before flashing (you accept DISCLAIMER.txt by using it)

@@ -113,7 +113,8 @@ sudo cp300-load-gateware
   that serves disk requests out of DMK images (`io_ctrl_pocket`, firmware in [`../../firmware/pocket`](../../firmware/pocket))
   are the ones of the [Analogue Pocket port](../analogue), unchanged.
 - **Daemon** (`host/cp300d.py`, standard-library Python): maps the window through `/dev/uio0`, serves the page and a WebSocket
-  (frames as zlib of the XOR with the previous frame, audio edges, keys) and stores disks and ROMs in `/var/lib/cp300`.
+  (frames as zlib of the XOR with the previous frame, audio edges, keys) and stores disks and ROMs in `/var/lib/cp300`. A disk
+  request of the gateware wakes it through the UIO interrupt (PLIC 126); with a gateware that has none it polls.
 - **Register access** (`host/regs32.c`, built with `gcc` on the board): the window is a 32-bit APB bus without byte strobes, and
   Python's `memcpy`-based access stores one byte at a time on this board, which corrupts the words. Every access is a real
   32-bit load or store.
@@ -129,7 +130,7 @@ block RAMs (88%), timing met. There is little room left for additions.
 The gateware is built outside this repository with Libero SoC, the framework's scripts and a bootloader built with SoftConsole;
 the steps and the pitfalls found are in [BUILDING.md](BUILDING.md). How the design works and why it was done this way (interface, frame capture, audio, disk mailbox, web protocol) is in the
 [technical paper](../../docs/beaglev-fire-technical-paper.md). `package/build_package.py` then assembles the package.
-Simulation: `sim/run.sh` (Icarus Verilog) and `host/test_cp300d.py`.
+Simulation: `sim/run.sh` and `sim/run_apb.sh` (Icarus Verilog) and `host/test_cp300d.py`.
 
 ## Repository layout
 

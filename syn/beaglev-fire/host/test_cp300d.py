@@ -145,6 +145,45 @@ def main():
         assert clicks, "no audio events"
         print("ok   key press changes the picture, audio events arrive")
 
+        # XOR frames come with consecutive seq; after {"keyframe":1} the next frame is a whole one
+        last = None
+        for _ in range(3):
+            while True:
+                op, m = ws.recv()
+                if op == 2 and m[0] == 1:
+                    break
+            seq = m[1] | m[2] << 8
+            assert m[3] == 1 and (last is None or seq == (last + 1) & 0xFFFF), (m[3], seq, last)
+            last = seq
+        ws.send_text(json.dumps({"keyframe": 1}))
+        kinds = []
+        deadline = time.time() + 5
+        while time.time() < deadline and 0 not in kinds:
+            op, m = ws.recv()
+            if op == 2 and m[0] == 1:
+                kinds.append(m[3])
+                if m[3] == 0:
+                    fb = zlib.decompress(m[4:])
+        assert 0 in kinds and len(kinds) <= 3, kinds
+        assert px(fb, 0, 0) == 1
+        print("ok   consecutive seq, key frame on request")
+
+        # the probe leaves the machine as it was: keys put back, CTRL not written
+        ws.send_text(json.dumps({"keys": "%016x" % (1 << 5)}))
+        time.sleep(0.2)
+        st, body = req("POST", "/api/ctrl", json.dumps({"turbo": 1}).encode())
+        before = json.loads(body)
+        st, body = req("GET", "/api/debug")
+        dbg = json.loads(body)
+        assert st == 200 and dbg["irq"] is False and dbg["frames_per_second"] > 30, dbg
+        assert dbg["keys_lo_readback"] == "0xa5a55a5a" and dbg["block_write_readback"] == ["0x11223344", "0x55667788"], dbg
+        assert int(dbg["ctrl"], 16) == 5, dbg                     # run + turbo
+        st, body = req("GET", "/api/state")
+        assert json.loads(body)["turbo"] == before["turbo"] == 1
+        st, body = req("GET", "/api/debug")
+        assert int(json.loads(body)["ctrl"], 16) == 5
+        print("ok   /api/debug: readback tests, CTRL untouched")
+
         ws.send_text(json.dumps({"keys": "%016x" % 0}))
         st, body = req("PUT", "/api/rom/system", b"short")
         assert st == 400
@@ -175,6 +214,11 @@ def main():
     assert dev.service()
     assert bytes(dev.disks[0][1024:1024 + 512]) == bytes(range(256)) * 2 and dev.dirty[0]
     print("ok   write request stored in the DMK")
+    # the probe puts the keys back
+    dev.set_keys(0x0000002000000040)
+    dev.debug()
+    assert regs.keys == 0x0000002000000040, hex(regs.keys)
+    print("ok   /api/debug restores the keys")
     print("PASS")
 
 

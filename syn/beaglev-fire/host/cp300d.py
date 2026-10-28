@@ -65,6 +65,7 @@ class MemRegs:
     regs32.c, compiled with gcc on first use."""
     def __init__(self, path, base=0, size=0x100000):
         import ctypes
+        self.uio = base == 0 and "/uio" in path
         self.fd = os.open(path, os.O_RDWR | os.O_SYNC)
         self.mm = mmap.mmap(self.fd, size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=base)
         self.base = ctypes.addressof(ctypes.c_char.from_buffer(self.mm))
@@ -108,6 +109,25 @@ class MemRegs:
     def write_block(self, off, data):
         buf = bytes(data)
         self.lib.wrblk(self.base + off, self.ct.c_char_p(buf), len(buf) // 4)
+
+    # The disk request interrupt (UIO): uio_pdrv_genirq masks it each time it fires; writing 1 to the device unmasks
+    # it, reading it returns the interrupt count. Without an interrupt in the overlay (package 0.2.0) both fail with
+    # EIO and the daemon only polls.
+    def irq_fd(self):
+        """The file descriptor to wait on for the interrupt (unmasked), or None if there is none."""
+        if not self.uio:
+            return None
+        try:
+            self.irq_unmask()
+        except OSError:
+            return None
+        return self.fd
+
+    def irq_unmask(self):
+        os.write(self.fd, struct.pack("=I", 1))
+
+    def irq_read(self):
+        return struct.unpack("=I", os.read(self.fd, 4))[0]
 
 
 class SimRegs:
@@ -209,6 +229,9 @@ class SimRegs:
             self.trk[off - W_TRK:off - W_TRK + len(data)] = data
         elif W_ROM <= off < W_ROM + 0x10000:
             self.rom[off - W_ROM:off - W_ROM + len(data)] = data
+        else:                                           # registers: word by word, as the bus does
+            for i in range(0, len(data) - 3, 4):
+                self.write32(off + i, struct.unpack_from("<I", data, i)[0])
 
 
 # ---------------------------------------------------------------- the device
@@ -225,7 +248,8 @@ class Cp300:
         self.ctrl = {"run": 0, "turbo": 0, "wp": 0}
         self.last_frame = -1
         self.frame_seq = 0
-        self.stats = {"requests": 0, "errors": 0, "frames": 0, "dropped": 0}
+        self.keys = 0
+        self.stats = {"requests": 0, "errors": 0, "frames": 0, "dropped": 0, "irqs": 0}
         if self.r.read32(R_ID) != ID_VALUE:
             raise SystemExit("register window does not answer with the CP-300 ID (0x%08X)" % ID_VALUE)
         self._load_saved()
@@ -373,6 +397,7 @@ class Cp300:
         return None
 
     def set_keys(self, keys):
+        self.keys = keys
         self.r.write32(R_KEYS_LO, keys & 0xFFFFFFFF)
         self.r.write32(R_KEYS_HI, keys >> 32)
 
@@ -386,10 +411,11 @@ class Cp300:
         return out
 
     def debug(self):
-        """Registers and bus timing, for bring-up: GET /api/debug (all accesses are 32 bit)."""
+        """Registers and bus timing, for bring-up: GET /api/debug (all accesses are 32 bit). It does not change the machine's
+        state: only the keys registers are written, and they are put back."""
         r = self.r
         out = {"ctrl": hex(r.read32(R_CTRL)), "status": hex(r.read32(R_STATUS)), "frame": hex(r.read32(R_FRAME)),
-               "debug_byte": hex(r.read32(R_DEBUG)), "audio_count": r.read32(R_AUDIO)}
+               "debug_byte": hex(r.read32(R_DEBUG)), "audio_count": r.read32(R_AUDIO), "irqs": self.stats["irqs"]}
         t = time.perf_counter()
         for _ in range(1000):
             r.read32(R_ID)
@@ -400,18 +426,9 @@ class Cp300:
         # do writes stick? (all zero reads would mean the register block is held in reset)
         r.write32(R_KEYS_LO, 0xA5A55A5A)
         out["keys_lo_readback"] = hex(r.read32(R_KEYS_LO))
-        r.write32(R_KEYS_LO, 0)
-        r.write32(R_CTRL, 1)
-        out["ctrl_readback_after_write_1"] = hex(r.read32(R_CTRL))
-        self.apply_ctrl()
-        out["ctrl_after_apply"] = hex(r.read32(R_CTRL))
         r.write_block(R_KEYS_LO, bytes([0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55]))
         out["block_write_readback"] = [hex(r.read32(R_KEYS_LO)), hex(r.read32(R_KEYS_HI))]
-        r.write32(R_KEYS_LO, 0)
-        r.write32(R_KEYS_HI, 0)
-        f0 = r.read32(R_FRAME) & 0xFFFF
-        time.sleep(1.0)
-        out["frames_per_second"] = (r.read32(R_FRAME) & 0xFFFF) - f0
+        self.set_keys(self.keys)
         return out
 
     def state(self):
@@ -453,6 +470,9 @@ class Server:
         self.webdir = webdir
         self.clients = set()
         self.keys = 0
+        self.irq_fd = None                  # set by pump() when the device has the disk request interrupt
+        self.irq_seen = False
+        self.wake = None
 
     async def handle(self, reader, writer):
         try:
@@ -511,7 +531,13 @@ class Server:
             if parts == ["state"]:
                 return await self.json(writer, dev.state())
             if parts == ["debug"]:
-                return await self.json(writer, dev.debug())
+                out = dev.debug()
+                # the hardware frame rate over one second; the pump keeps serving the disk meanwhile
+                f0 = dev.r.read32(R_FRAME) & 0xFFFF
+                await asyncio.sleep(1.0)
+                out["frames_per_second"] = ((dev.r.read32(R_FRAME) & 0xFFFF) - f0) & 0xFFFF
+                out["irq"] = self.irq_fd is not None
+                return await self.json(writer, out)
             if parts[0] == "disk" and len(parts) == 2 and parts[1] in "0123":
                 n = int(parts[1])
                 if method == "PUT":
@@ -583,6 +609,8 @@ class Server:
                     if "keys" in msg:
                         self.keys = int(msg["keys"], 16) & ((1 << 64) - 1)
                         self.dev.set_keys(self.keys)
+                    if msg.get("keyframe"):
+                        me.prev = None                     # the page lost its picture: the next frame is a whole one
                     if "ctrl" in msg:
                         self.ctrl(msg["ctrl"])
                         await self.push_state()
@@ -593,14 +621,35 @@ class Server:
             if not self.clients:
                 self.dev.set_keys(0)
 
+    def _on_irq(self):
+        try:
+            self.dev.stats["irqs"] = self.dev.r.irq_read()
+        except OSError:
+            pass
+        self.irq_seen = True
+        self.wake.set()
+
     async def pump(self):
-        """The hardware loop: disk requests first (they are time critical), then picture and audio."""
+        """The hardware loop: disk requests first (they are time critical), then picture and audio. With the interrupt
+        a disk request wakes the loop at once; the timed wake-up stays, for the picture and the audio and as a fallback."""
         dev = self.dev
+        self.wake = asyncio.Event()
+        self.irq_fd = getattr(dev.r, "irq_fd", lambda: None)()
+        if self.irq_fd is not None:
+            asyncio.get_running_loop().add_reader(self.irq_fd, self._on_irq)
+        print("cp300d: disk requests by %s" % ("interrupt" if self.irq_fd is not None else "polling"), flush=True)
         last_save = time.monotonic()
         while True:
             busy = False
             while dev.service():
                 busy = True
+            if self.irq_seen:
+                # unmask only now: the level interrupt has dropped with DONE, a new request raises it again
+                self.irq_seen = False
+                try:
+                    dev.r.irq_unmask()
+                except OSError:
+                    pass
             frame = dev.new_frame()
             if frame is not None and self.clients:
                 for c in list(self.clients):
@@ -618,7 +667,11 @@ class Server:
             if time.monotonic() - last_save > 2:
                 dev.save_dirty()
                 last_save = time.monotonic()
-            await asyncio.sleep(0.0005 if busy else 0.004)
+            self.wake.clear()
+            try:
+                await asyncio.wait_for(self.wake.wait(), 0.0005 if busy else 0.004)
+            except asyncio.TimeoutError:
+                pass
 
 
 class _Client:

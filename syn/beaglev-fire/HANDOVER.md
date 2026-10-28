@@ -1,7 +1,22 @@
 # Handover: CP-300 on the BeagleV-Fire
 
-State at the first release (package 0.2.0, 2026-10-28). The README is the user documentation, [BUILDING.md](BUILDING.md) the build
-procedure; this lists what is open.
+State at package 0.3.0 (2026-10-28). The README is the user documentation, [BUILDING.md](BUILDING.md) the build procedure;
+this lists what is open.
+
+## Changes in 0.3.0
+
+- **Disk request interrupt.** `make_cape.py` now really connects `irq` to the cape's `INT[0]` (in 0.2.0 an exact-text replace
+  missed the template's `24'h0` and left it at zero; every template edit now has to match exactly once). The overlay declares
+  it (`interrupts = <126>`: `INT[0]` is `MSS_INT_F2M[8]`, fabric interrupts are PLIC 118 + n, checked against the board's PCIe
+  root port = 119 on `F2M[1]` and IHC mailbox = 180 on `F2M[62]`). The daemon waits on `/dev/uio0` and unmasks after each
+  request; on a gateware without the interrupt (unmask gives `EIO`) it polls as before. `/api/debug` shows `irq` and `irqs`.
+- **Frame resync.** The page checks `seq` and asks for a whole frame (`{"keyframe":1}`) when an XOR frame cannot be applied;
+  before, a decode error left a wrong picture until the page reconnected.
+- **`/api/debug`** no longer writes `CTRL` (it used to start a stopped machine for a moment), puts the keys back, and measures
+  the frame rate without blocking the daemon (the old one-second `sleep` could stall a disk request past the firmware's timeout).
+- **`PAGED` bridge mode** is simulated (`sim/tb_apb.v`, a 4 KB window with the page register).
+- **Gateware identity** now carries the design version: `2025.10-13-g943f37f-4302-CP300` (`DESIGN_VERSION` 4302), so the
+  installer flashes the new gateware on a board that has 0.2.0's.
 
 ## Done and checked on a board
 
@@ -15,6 +30,8 @@ procedure; this lists what is open.
 
 ## Not done / not verified
 
+0. **The 0.3.0 gateware on the board** (the interrupt arriving as PLIC 126, `"irq": true` and a rising `irqs` in `/api/debug`):
+   built, not yet flashed. The polling fallback was checked against the 0.2.0 gateware (unmask gives `EIO`).
 1. **The flash-and-reboot path of the installer** (`--force-flash`) and **another gateware and back** have not been run on a board.
 2. **Frame rate:** about 40 fps in the page against the 60 Hz hardware. The daemon's Python (zlib of the XOR frame, WebSocket) is
    the limit; the bulk read of a frame itself takes 1.5 ms.
@@ -23,7 +40,7 @@ procedure; this lists what is open.
    step 5). A build on 2025.2 would remove that doubt.
 5. **No fallback when flashing** (the board's own mechanism keeps none). A FlashPro5/6 recovery was not tried.
 6. Ideas: embed the page in Cockpit through Cockpit's HTTP and WebSocket channels (the browser refuses an `http` frame inside the
-   `https` Cockpit page, so the sidebar entry opens the page in a new tab); use the interrupt line (`irq`) instead of polling;
+   `https` Cockpit page, so the sidebar entry opens the page in a new tab);
    a bus timeout in `apb_regbus.v` so a dead clock cannot hang the bus; a prebuilt `regs32.so` for boards without `gcc`.
 
 ## Decisions

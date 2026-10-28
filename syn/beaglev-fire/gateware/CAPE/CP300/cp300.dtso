@@ -7,6 +7,10 @@
  * The /chosen/overlays entry is how the board shows which gateware is loaded; the framework replaces the
  * value with the git version. The daemon (host/cp300d.py) maps the window through /dev/mem, or through
  * /dev/uio0 when the kernel binds generic-uio (uio_pdrv_genirq.of_id=generic-uio on the kernel command line).
+ *
+ * Interrupt: the cape's INT[0] (the disk request level, rtl/bvf_core_bus.v) is MSS_INT_F2M[8]. The fabric
+ * interrupts are PLIC sources 118 + n (the board's PCIe root port, on MSS_INT_F2M[1], is 119), so INT[0] is 126.
+ * uio_pdrv_genirq masks it on every interrupt; the daemon unmasks it after serving the request.
  */
 
 /dts-v1/;
@@ -26,6 +30,8 @@
 		compatible = "generic-uio";
 		reg = <0x0 0x41000000 0x0 0x100000>;
 		clocks = <&fabric_clk3>;
+		interrupt-parent = <&plic>;
+		interrupts = <126>;
 		status = "okay";
 	};
 };

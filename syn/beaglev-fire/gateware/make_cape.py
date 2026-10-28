@@ -64,17 +64,28 @@ bvf_core_apb cp300 (
 """
 
 
+def sub_once(pattern, repl, text, what):
+    """re.sub that must match exactly once: a template that changed shape stops the script instead of being skipped."""
+    text, n = re.subn(pattern, repl, text, count=1, flags=re.S | re.M)
+    if n != 1:
+        raise SystemExit("%s not found in the template CAPE.v" % what)
+    return text
+
+
 def patch_cape(text):
     # ports PREADY / PSLVERR
-    text = text.replace("    APB_SLAVE_SLAVE_PRDATA,\n", "    APB_SLAVE_SLAVE_PRDATA,\n    APB_SLAVE_SLAVE_PREADY,\n    APB_SLAVE_SLAVE_PSLVERR,\n", 1)
-    text = text.replace("output [31:0] APB_SLAVE_SLAVE_PRDATA;\n",
-                        "output [31:0] APB_SLAVE_SLAVE_PRDATA;\noutput        APB_SLAVE_SLAVE_PREADY;\noutput        APB_SLAVE_SLAVE_PSLVERR;\n", 1)
+    text = sub_once(r"^([ \t]*)APB_SLAVE_SLAVE_PRDATA,\n", r"\g<0>\1APB_SLAVE_SLAVE_PREADY,\n\1APB_SLAVE_SLAVE_PSLVERR,\n", text,
+                    "APB_SLAVE_SLAVE_PRDATA port")
+    text = sub_once(r"^output \[31:0\] APB_SLAVE_SLAVE_PRDATA;\n",
+                    "\\g<0>output        APB_SLAVE_SLAVE_PREADY;\noutput        APB_SLAVE_SLAVE_PSLVERR;\n", text,
+                    "APB_SLAVE_SLAVE_PRDATA declaration")
     # the register block is replaced
-    text, n = re.subn(r"//--------apb_ctrl_status\napb_ctrl_status apb_ctrl_status_0\(.*?\);\n", lambda m: INSTANCE, text, count=1, flags=re.S)
-    if n != 1:
-        raise SystemExit("apb_ctrl_status instance not found in the template CAPE.v")
-    # interrupt: bit 0 of INT follows the disk request level
-    text = text.replace("assign INT[23:0]                    = 24'h000000;", "assign INT[23:0]                    = {23'h000000, cp300_irq};", 1)
+    text = sub_once(r"//--------apb_ctrl_status\napb_ctrl_status apb_ctrl_status_0\(.*?\);\n", lambda m: INSTANCE, text,
+                    "apb_ctrl_status instance")
+    # interrupt: bit 0 of INT (MSS_INT_F2M[8], PLIC 126) follows the disk request level. The template writes the
+    # constant as 24'h0; any spelling of it is matched (an exact-text replace missed it in package 0.2.0)
+    text = sub_once(r"^assign INT\[23:0\](\s*)=\s*24'h0+;", r"assign INT[23:0]\1= {23'h000000, cp300_irq};", text,
+                    "assign INT[23:0]")
     # nothing reads the old control register any more
     text = text.replace("wire   [31:0]  apb_ctrl_status_0_control;\n", "", 1)
     return text

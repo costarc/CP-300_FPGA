@@ -184,13 +184,22 @@ async function inflate(bytes) {
   const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
+// frames: kind 0 = whole, kind 1 = XOR with the previous one, seq + 1 each. Without the right previous frame an XOR frame
+// cannot be drawn: ask the daemon (once) for a whole frame and skip the XOR frames until it comes.
+let prevSeq = -1, wantKey = false;
+function needKey() {
+  prev = null;
+  if (!wantKey && ws && ws.readyState === 1) { wantKey = true; ws.send(JSON.stringify({ keyframe: 1 })); }
+}
 function onFrame(buf) {
-  const kind = buf[3], z = buf.subarray(4);
+  const seq = buf[1] | (buf[2] << 8), kind = buf[3], z = buf.subarray(4);
   lastQueue = lastQueue.then(async () => {
+    if (kind === 1 && (!prev || seq !== ((prevSeq + 1) & 0xffff))) { needKey(); return; }
     const data = await inflate(z);
-    if (kind === 1 && prev) for (let i = 0; i < data.length; i++) data[i] ^= prev[i];
-    prev = data; frames++; draw(data);
-  }).catch(() => { prev = null; });
+    if (kind === 1) for (let i = 0; i < data.length; i++) data[i] ^= prev[i];
+    else wantKey = false;
+    prev = data; prevSeq = seq; frames++; draw(data);
+  }).catch(needKey);
 }
 setInterval(() => { $("fps").textContent = ws && ws.readyState === 1 ? frames + " fps" : ""; frames = 0; }, 1000);
 
@@ -221,7 +230,7 @@ function audioEvents(buf) {
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + BASE + "ws");
   ws.binaryType = "arraybuffer";
-  ws.onopen = () => { $("conn").textContent = "connected"; $("conn").className = "on"; prev = null; keyBits = -1n; sendKeys(); };
+  ws.onopen = () => { $("conn").textContent = "connected"; $("conn").className = "on"; prev = null; wantKey = false; keyBits = -1n; sendKeys(); };
   ws.onclose = () => { $("conn").textContent = "disconnected, retrying…"; $("conn").className = ""; setTimeout(connect, 1500); };
   ws.onmessage = ev => {
     if (typeof ev.data === "string") { showState(JSON.parse(ev.data)); return; }
