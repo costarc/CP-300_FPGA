@@ -23,6 +23,8 @@ code that has not met its hardware yet: expect to find problems.
 
 ### BeagleV-Fire in short
 
+The design is written up as a technical paper: [docs/beaglev-fire-technical-paper.md](docs/beaglev-fire-technical-paper.md).
+
 The BeagleV-Fire has no video output, so the **browser is the monitor, keyboard, speaker and disk drive**: the CP-300 runs in the
 FPGA fabric, a small Python daemon on the board's Linux serves a web page. `syn/beaglev-fire/releases/` holds the installable
 package (`cp300-beaglev-fire-<version>.tar.gz`): `sudo ./install.sh` installs the software, adds the CP-300 to the board's web

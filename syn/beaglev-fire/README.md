@@ -127,7 +127,8 @@ block RAMs (88%), timing met. There is little room left for additions.
 ## Building the package yourself
 
 The gateware is built outside this repository with Libero SoC, the framework's scripts and a bootloader built with SoftConsole;
-the steps and the pitfalls found are in [BUILDING.md](BUILDING.md). `package/build_package.py` then assembles the package.
+the steps and the pitfalls found are in [BUILDING.md](BUILDING.md). How the design works and why it was done this way (interface, frame capture, audio, disk mailbox, web protocol) is in the
+[technical paper](../../docs/beaglev-fire-technical-paper.md). `package/build_package.py` then assembles the package.
 Simulation: `sim/run.sh` (Icarus Verilog) and `host/test_cp300d.py`.
 
 ## Repository layout
