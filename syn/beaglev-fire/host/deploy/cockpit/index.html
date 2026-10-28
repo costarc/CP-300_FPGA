@@ -1,5 +1,22 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CP-300</title>
-<style>html, body, iframe { margin: 0; height: 100%; width: 100%; border: 0; }</style>
-<iframe src="/cp300/" allow="autoplay"></iframe>
+<style>
+  body { font: 16px system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
+  a.open { display: inline-block; padding: .6rem 1.2rem; border-radius: 4px; background: #0066cc; color: #fff; text-decoration: none; }
+  #state { margin-top: 1.5rem; color: #555; }
+</style>
+<h1>CP-300</h1>
+<p>The Prológica CP-300 (TRS-80 Model III) runs in the FPGA; the screen, keyboard, sound and disks are in the browser.</p>
+<!-- Cockpit is served over https on port 9090; the CP-300 page is on the stock web server (port 80), so it opens in its own tab -->
+<p><a class="open" id="open" target="_blank" rel="noopener">Open the CP-300</a></p>
+<p id="state">checking the daemon...</p>
+<script>
+  var url = "http://" + location.hostname + "/cp300/";
+  document.getElementById("open").href = url;
+  // a request to the other origin only tells whether the daemon answers (no-cors: the reply is opaque)
+  fetch(url + "api/state", { mode: "no-cors" })
+    .then(function () { document.getElementById("state").textContent = "The daemon is running: " + url; })
+    .catch(function () { document.getElementById("state").textContent = "The daemon does not answer yet (systemctl status cp300d)."; });
+</script>
