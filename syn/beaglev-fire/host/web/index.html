@@ -15,7 +15,8 @@ h1 { font-size:18px; margin:0; font-weight:600; }
 #conn.on { color:var(--acc); }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
 #screenwrap { background:#000; border-radius:6px; padding:0; line-height:0; }
-canvas { width:100%; height:auto; image-rendering:pixelated; aspect-ratio: 512 / 192; background:#000; display:block; border-radius:6px; }
+/* the 512x192 picture is shown on a 4:3 tube, as on the real machine: pixels are taller than wide (1024 x 768 = 2x by 4x) */
+canvas { width:100%; max-width:1024px; height:auto; image-rendering:pixelated; aspect-ratio: 4 / 3; background:#000; display:block; border-radius:6px; margin:0 auto; }
 .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 button, select { background:#252c35; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
 button:hover { border-color:var(--acc); }
