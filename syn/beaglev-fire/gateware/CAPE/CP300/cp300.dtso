@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * CP-300 gateware for the BeagleV-Fire: the cape APB slot of the gateware framework is the 16 MB window at
+ * 0x41000000 of the fabric bus (the framework's own cape overlay puts core_pwm0 at 0x41000000). The CP-300
+ * uses the first 1 MB: registers, ROM load, track RAM and frame RAM (see rtl/bvf_regs.v).
+ *
+ * The /chosen/overlays entry is how the board shows which gateware is loaded; the framework replaces the
+ * value with the git version. The daemon (host/cp300d.py) maps the window through /dev/mem, or through
+ * /dev/uio0 when the kernel binds generic-uio (uio_pdrv_genirq.of_id=generic-uio on the kernel command line).
+ */
+
+/dts-v1/;
+/plugin/;
+
+&{/chosen} {
+	overlays {
+		CP300-GATEWARE = "GATEWARE_GIT_VERSION";
+	};
+};
+
+&{/} {
+	fabric-bus@40000000 {
+		cp300: cp300@41000000 {
+			compatible = "generic-uio";
+			reg = <0x0 0x41000000 0x0 0x100000>;
+			clocks = <&fabric_clk3>;
+			status = "okay";
+		};
+	};
+};

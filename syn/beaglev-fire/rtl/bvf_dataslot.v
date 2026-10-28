@@ -81,13 +81,12 @@ assign busy = req_tog ^ done_tog;
 assign err  = err_r;
 
 // ---------------------------------------------------------------- slot table written by the host
-reg [31:0] sz [0:3];
+reg [31:0] sz [0:3] /* synthesis syn_ramstyle = "registers" */;
 reg  [3:0] pres = 4'd0;
 reg  [3:0] cg   = 4'd0;
 reg  [3:0] seen = 4'd0;
 reg        scan = 1'b0;
 integer k;
-initial for (k = 0; k < 4; k = k + 1) sz[k] = 32'd0;
 always @(posedge clk) begin
 	if (reset) begin
 		pres <= 4'd0; cg <= 4'd0; seen <= 4'd0; scan <= 1'b0;
