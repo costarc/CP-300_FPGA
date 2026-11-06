@@ -4,6 +4,12 @@ An FPGA recreation of the **Prológica CP-300** (the Brazilian TRS-80 Model III 
 [BeagleV-Fire](https://www.beagleboard.org/boards/beaglev-fire): a RISC-V Linux board with a Microchip PolarFire SoC
 (MPFS025T) and about 23K logic elements of FPGA fabric. Part of the [CP-300 FPGA](../../README.md) project.
 
+> **Note: this port is not feature-complete.** It is kept here as the CP-300 port of this project. Additional features
+> (more machines on the same board, FreHD/IDE hard disks, tape, DDR memory, and further fixes) are only available in the
+> native BeagleV-Fire multicore project:
+> **[BeagleV-Fire Retro Computers](https://github.com/costarc/BeagleV-Fire-Retro)**. Use that project for the most
+> complete and up-to-date BeagleV-Fire gateware, host software and documentation.
+
 The board has no video output and no keyboard port for the FPGA, so **the browser is the monitor, keyboard, speaker and
 disk drive**. The CP-300 runs in the fabric; a small Python daemon on the board's Linux moves the picture, the key presses,
 the sound and the disk data between the fabric and a web page.
@@ -133,7 +139,7 @@ block RAMs (88%), timing met. There is little room left for additions.
 
 The gateware is built outside this repository with Libero SoC, the framework's scripts and a bootloader built with SoftConsole;
 the steps and the pitfalls found are in [BUILDING.md](BUILDING.md). How the design works and why it was done this way (interface, frame capture, audio, disk mailbox, web protocol) is in the
-[technical paper](../../docs/beaglev-fire-technical-paper.md). `package/build_package.py` then assembles the package.
+[technical paper](https://github.com/costarc/BeagleV-Fire-Retro/tree/master/docs). `package/build_package.py` then assembles the package.
 Simulation: `sim/run.sh` and `sim/run_apb.sh` (Icarus Verilog) and `host/test_cp300d.py`.
 
 ## Repository layout
