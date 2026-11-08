@@ -6,6 +6,19 @@ It runs the original CP-300 ROM and boots TRS-80 Model III disk operating system
 from **DMK** disk images. The same core runs on the Terasic DE0, the Analogue Pocket, the BeagleV-Fire (in a web browser), the MiSTer
 and the Sipeed Tang Nano 9K / 20K.
 
+## 📖 The Book
+
+This project is **Chapter 11, "CP-300 FPGA"**, in a book:
+
+**Chips, Code, and Cartridges: Turn Curiosity into Creation with 13 Hands-On Projects, from 8-bit Classics to FPGAs**
+
+It walks through thirteen of my own hardware and software projects, from 8-bit classics to FPGAs, for beginners and curious makers. Each chapter explains how one project works and how to build it, with colour diagrams and real code from its repository.
+
+### 👉 [Get the book on Amazon](https://link.amazon/B013Yaq9y)
+
+<sub>As an Amazon Associate, the author earns from qualifying purchases. Buying through this link
+supports these projects at no extra cost to you.</sub>
+
 ## Ports
 
 One core, several boards. Each port folder has its own README with the wiring, the build and the status.
